@@ -90,6 +90,56 @@
     </div>
   </section>
 
+    <!-- ── VIZ 4: TEMPERATURE HEATMAP ── -->
+  <section class="viz-block shaded">
+    <div class="viz-title-row">
+      <h2>Temperature Heatmap</h2>
+      <p class="viz-desc">Annual mean temperature (°F) across cities and years under a selected emissions scenario.</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <label for="tempHeatScenario">Scenario</label>
+        <select id="tempHeatScenario"></select>
+      </div>
+
+      <div class="ctrl-group">
+        <label for="tempHeatYear">Highlighted Year</label>
+        <input type="range" id="tempHeatYear" min="1950" max="2100" step="1" value="2020">
+        <span id="tempHeatYearLabel">2020</span>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <svg id="tempHeatmap"></svg>
+    </div>
+  </section>
+
+  <!-- ── VIZ 5: PRECIPITATION HEATMAP ── -->
+  <section class="viz-block">
+    <div class="viz-title-row">
+      <h2>Precipitation Heatmap</h2>
+      <p class="viz-desc">Annual mean precipitation (mm/day) across cities and years under a selected emissions scenario.</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <label for="precipHeatScenario">Scenario</label>
+        <select id="precipHeatScenario"></select>
+      </div>
+
+      <div class="ctrl-group">
+        <label for="precipHeatYear">Highlighted Year</label>
+        <input type="range" id="precipHeatYear" min="1950" max="2100" step="1" value="2020">
+        <span id="precipHeatYearLabel">2020</span>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <svg id="precipHeatmap"></svg>
+    </div>
+  </section>
+
   <footer>
     <p>Data: CMIP6 via Google Cloud Public Datasets · GFDL-ESM4 (NOAA) · MPI-ESM1-2-LR (Max Planck) · DSC106 UC San Diego</p>
   </footer>

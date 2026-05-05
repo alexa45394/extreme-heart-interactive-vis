@@ -49,6 +49,14 @@ buildLegend("precipLegend");
   d3.select(`#${id}`).property("value", "ssp245");
 });
 
+// ── POPULATE HEATMAP DROPDOWNS ───────────────────────────────────────────────
+["tempHeatScenario", "precipHeatScenario"].forEach(id => {
+  SSPS.forEach(s => {
+    d3.select(`#${id}`).append("option").text(SSP_LABELS[s]).attr("value", s);
+  });
+  d3.select(`#${id}`).property("value", "ssp245");
+});
+
 // ── VIZ 1 & 2: LINE CHARTS ───────────────────────────────────────────────────
 // Try yearly file first, fall back to monthly CSV
 let csvData = [];
