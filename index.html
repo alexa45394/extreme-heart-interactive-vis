@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CMIP6 Climate Futures</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>CMIP6 Climate Futures</h1>
+    <p class="subtitle">Projected temperature, precipitation, and soil moisture for US cities and California — GFDL-ESM4 &amp; MPI-ESM1-2-LR models</p>
+  </div>
+
+  <!-- ── VIZ 1: TEMPERATURE ── -->
+  <section class="viz-block">
+    <div class="viz-title-row">
+      <h2>Temperature Projections</h2>
+      <p class="viz-desc">Annual mean near-surface temperature (°F) by city and emissions scenario, 1950–2100.</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <label for="tempCity">City</label>
+        <select id="tempCity"></select>
+      </div>
+      <div class="ctrl-group">
+        <label for="tempScenario">Scenario</label>
+        <select id="tempScenario"></select>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <svg id="tempChart"></svg>
+    </div>
+
+    <div class="scenario-legend" id="tempLegend"></div>
+  </section>
+
+  <!-- ── VIZ 2: PRECIPITATION ── -->
+  <section class="viz-block shaded">
+    <div class="viz-title-row">
+      <h2>Precipitation Projections</h2>
+      <p class="viz-desc">Annual mean precipitation (mm/day) by city and emissions scenario, 1950–2100.</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <label for="precipCity">City</label>
+        <select id="precipCity"></select>
+      </div>
+      <div class="ctrl-group">
+        <label for="precipScenario">Scenario</label>
+        <select id="precipScenario"></select>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <svg id="precipChart"></svg>
+    </div>
+
+    <div class="scenario-legend" id="precipLegend"></div>
+  </section>
+
+  <!-- ── VIZ 3: CALIFORNIA MAP ── -->
+  <section class="viz-block">
+    <div class="viz-title-row">
+      <h2>California Soil Moisture Anomaly</h2>
+      <p class="viz-desc">End-of-century (2071–2100) soil moisture change vs. 1985–2014 baseline. Red = drier, blue = wetter. Model: MPI-ESM1-2-LR.</p>
+    </div>
+
+    <div class="controls">
+      <div class="ctrl-group">
+        <label for="mapScenario">Scenario</label>
+        <select id="mapScenario"></select>
+      </div>
+    </div>
+
+    <div class="map-container">
+      <svg id="caMap"></svg>
+      <div class="colorbar-row">
+        <span class="cb-label red-text">← Drier</span>
+        <svg id="colorbar" width="240" height="16"></svg>
+        <span class="cb-label blue-text">Wetter →</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Data: CMIP6 via Google Cloud Public Datasets · GFDL-ESM4 (NOAA) · MPI-ESM1-2-LR (Max Planck) · DSC106 UC San Diego</p>
+  </footer>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

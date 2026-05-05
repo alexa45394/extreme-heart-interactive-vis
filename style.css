@@ -1,0 +1,229 @@
+/* ── RESET ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #ffffff;
+  --bg-shade: #f7f8fa;
+  --border:   #e0e4ea;
+  --text:     #1a1f2e;
+  --muted:    #6b7589;
+  --accent:   #2563eb;
+
+  --c126: #16a34a;   /* green  */
+  --c245: #d97706;   /* amber  */
+  --c370: #ea580c;   /* orange */
+  --c585: #dc2626;   /* red    */
+
+  --font: 'Inter', system-ui, sans-serif;
+  --radius: 8px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── PAGE HEADER ── */
+.page-header {
+  padding: 48px 64px 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 14px;
+  max-width: 680px;
+}
+
+/* ── SECTIONS ── */
+.viz-block {
+  padding: 48px 64px;
+  border-bottom: 1px solid var(--border);
+}
+
+.viz-block.shaded {
+  background: var(--bg-shade);
+}
+
+.viz-title-row {
+  margin-bottom: 24px;
+}
+
+.viz-title-row h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.viz-desc {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ── CONTROLS ── */
+.controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.ctrl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ctrl-group label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+select {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 7px 30px 7px 10px;
+  font-family: var(--font);
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7589'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color .15s;
+  min-width: 180px;
+}
+select:hover, select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* ── CHART CONTAINER ── */
+.chart-container {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 8px;
+  margin-bottom: 16px;
+}
+
+.viz-block.shaded .chart-container {
+  background: var(--bg);
+}
+
+svg#tempChart,
+svg#precipChart {
+  width: 100%;
+  height: 360px;
+  display: block;
+}
+
+/* ── D3 CHART ELEMENTS ── */
+.axis text {
+  fill: var(--muted);
+  font-family: var(--font);
+  font-size: 11px;
+}
+.axis path, .axis line { stroke: var(--border); }
+.grid line { stroke: var(--border); stroke-dasharray: 3,3; opacity: .6; }
+.grid path { stroke: none; }
+.divider-line { stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 5,4; }
+.axis-label { fill: var(--muted); font-family: var(--font); font-size: 11px; }
+
+/* ── SCENARIO LEGEND ── */
+.scenario-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.leg-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── MAP ── */
+.map-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+svg#caMap {
+  width: 600px;
+  height: 520px;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #f0f4f8;
+}
+
+.colorbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cb-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+.red-text  { color: var(--c585); }
+.blue-text { color: var(--accent); }
+
+/* ── TOOLTIP ── */
+.tooltip {
+  position: fixed;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.7;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.10);
+  transition: opacity .1s;
+}
+.tooltip.show { opacity: 1; }
+
+/* ── FOOTER ── */
+footer {
+  padding: 24px 64px;
+  background: var(--bg-shade);
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 700px) {
+  .page-header, .viz-block, footer { padding: 28px 20px; }
+  svg#caMap { width: 100%; height: 380px; }
+}
