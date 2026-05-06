@@ -74,7 +74,7 @@ d3.csv("data/city_climate_yearly.csv")
     drawTemp();
     drawPrecip();
     drawTempHeatmap();
-    drawPrecipHeatmap();
+    drawPrecipBarChart();
   })
   .catch(() => {
     // Fallback: load monthly CSV and aggregate to yearly
@@ -112,17 +112,13 @@ d3.csv("data/city_climate_yearly.csv")
         drawTemp();
         drawPrecip();
         drawTempHeatmap();
-        drawPrecipHeatmap();
+        drawPrecipBarChart();
       })
-      .catch(() => {
-        ["tempChart","precipChart"].forEach(id => {
-          d3.select(`#${id}`).append("text")
-            .attr("x",20).attr("y",40)
-            .attr("fill","#dc2626")
-            .text("⚠ Could not load city_climate_yearly.csv or city_climate.csv");
-        });
+      .catch(error => {
+        console.error("Could not load city climate data:", error);
       });
-  });
+    });
+
 
 function drawChart(svgId, variable, citySelectId, scenarioSelectId, yLabel) {
   const city     = d3.select(`#${citySelectId}`).property("value");
