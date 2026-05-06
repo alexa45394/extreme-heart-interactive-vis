@@ -65,13 +65,16 @@ let csvData = [];
 d3.csv("data/city_climate_yearly.csv")
   .then(raw => {
     raw.forEach(d => {
-      d.date          = new Date(+d.year, 0, 1);  // Jan 1 of that year
+      d.year          = +d.year;
+      d.date          = new Date(d.year, 0, 1);  // Jan 1 of that year
       d.temperature_f = +d.temperature_f;
       d.precip_mm     = +d.precip_mm;
     });
     csvData = raw;
     drawTemp();
     drawPrecip();
+    drawTempHeatmap();
+    drawPrecipHeatmap();
   })
   .catch(() => {
     // Fallback: load monthly CSV and aggregate to yearly
@@ -95,7 +98,8 @@ d3.csv("data/city_climate_yearly.csv")
           for (const [scenario, byYear] of byScenario) {
             for (const [year, rows] of byYear) {
               yearly.push({
-                date:          new Date(year, 0, 1),
+                year:          +year,
+                date:          new Date(+year, 0, 1),
                 city,
                 scenario,
                 temperature_f: d3.mean(rows, r => r.temperature_f),
@@ -107,6 +111,8 @@ d3.csv("data/city_climate_yearly.csv")
         csvData = yearly;
         drawTemp();
         drawPrecip();
+        drawTempHeatmap();
+        drawPrecipHeatmap();
       })
       .catch(() => {
         ["tempChart","precipChart"].forEach(id => {
@@ -403,9 +409,252 @@ function drawCAMap() {
     .text(`${SSP_LABELS[scenario]} · 2071–2100 vs 1985–2014 · MPI-ESM1-2-LR`);
 }
 
+// ── VIZ 4: TEMPERATURE HEATMAP ──────────────────────────────────────────────
+
+function drawTempHeatmap() {
+  if (!csvData.length) return;
+
+  const scenario = d3.select("#tempHeatScenario").property("value");
+
+  const data = csvData
+    .filter(d => d.scenario === scenario && CITIES.includes(d.city))
+    .map(d => ({
+      ...d,
+      year: d.year ?? d.date.getFullYear()
+    }))
+    .filter(d => Number.isFinite(d.year) && Number.isFinite(d.temperature_f));
+
+  const svg = d3.select("#tempHeatmap");
+  svg.selectAll("*").remove();
+
+  if (!data.length) return;
+
+  const years = [...new Set(data.map(d => d.year))].sort(d3.ascending);
+  const cities = CITIES.filter(city => data.some(d => d.city === city));
+
+  const slider = d3.select("#tempHeatYear");
+  slider.attr("min", d3.min(years));
+  slider.attr("max", d3.max(years));
+  slider.attr("step", 1);
+
+  let selectedYear = +slider.property("value");
+
+  if (!years.includes(selectedYear)) {
+    selectedYear = years.includes(2020) ? 2020 : years[Math.floor(years.length / 2)];
+    slider.property("value", selectedYear);
+  }
+
+  d3.select("#tempHeatYearLabel").text(selectedYear);
+
+  const W = svg.node().clientWidth || 900;
+  const H = svg.node().clientHeight || 360;
+  const m = { top: 32, right: 24, bottom: 48, left: 92 };
+  const w = W - m.left - m.right;
+  const h = H - m.top - m.bottom;
+
+  const g = svg.append("g")
+    .attr("transform", `translate(${m.left},${m.top})`);
+
+  const x = d3.scaleBand()
+    .domain(years)
+    .range([0, w])
+    .paddingInner(0.02);
+
+  const y = d3.scaleBand()
+    .domain(cities)
+    .range([0, h])
+    .paddingInner(0.08);
+
+  const [minTemp, maxTemp] = d3.extent(data, d => d.temperature_f);
+
+  const color = d3.scaleSequential()
+    .domain([minTemp, maxTemp])
+    .interpolator(d3.interpolateYlOrRd);
+
+  g.selectAll(".heat-cell")
+    .data(data)
+    .join("rect")
+    .attr("class", "heat-cell")
+    .attr("x", d => x(d.year))
+    .attr("y", d => y(d.city))
+    .attr("width", x.bandwidth())
+    .attr("height", y.bandwidth())
+    .attr("fill", d => color(d.temperature_f))
+    .on("mousemove", function(event, d) {
+      showTip(
+        `<strong>${d.city}</strong> · ${SSP_LABELS[scenario]}<br/>` +
+        `Year: ${d.year}<br/>` +
+        `<strong>${d.temperature_f.toFixed(1)} °F</strong>`,
+        event
+      );
+    })
+    .on("mouseleave", hideTip);
+
+  if (x(selectedYear) !== undefined) {
+    g.append("rect")
+      .attr("class", "heat-highlight")
+      .attr("x", x(selectedYear))
+      .attr("y", 0)
+      .attr("width", x.bandwidth())
+      .attr("height", h);
+  }
+
+  const xTickYears = years.filter(year => year % 10 === 0);
+
+  g.append("g")
+    .attr("class", "heat-axis")
+    .attr("transform", `translate(0,${h})`)
+    .call(d3.axisBottom(x).tickValues(xTickYears));
+
+  g.append("g")
+    .attr("class", "heat-axis")
+    .call(d3.axisLeft(y));
+
+  g.append("text")
+    .attr("class", "axis-label")
+    .attr("x", 0)
+    .attr("y", -12)
+    .text(`${SSP_LABELS[scenario]} · darker red = hotter`);
+}
+
+
+// ── VIZ 5: PRECIPITATION BAR CHART ──────────────────────────────────────────
+
+function drawPrecipBarChart() {
+  if (!csvData.length) return;
+
+  const scenario = d3.select("#precipHeatScenario").property("value");
+
+  const allRows = csvData
+    .filter(d => d.scenario === scenario && CITIES.includes(d.city))
+    .map(d => ({
+      ...d,
+      year: d.year ?? d.date.getFullYear()
+    }))
+    .filter(d => Number.isFinite(d.year) && Number.isFinite(d.precip_mm));
+
+  const svg = d3.select("#precipHeatmap");
+  svg.selectAll("*").remove();
+
+  if (!allRows.length) return;
+
+  const years = [...new Set(allRows.map(d => d.year))].sort(d3.ascending);
+
+  const slider = d3.select("#precipHeatYear");
+  slider.attr("min", d3.min(years));
+  slider.attr("max", d3.max(years));
+  slider.attr("step", 1);
+
+  let selectedYear = +slider.property("value");
+
+  if (!years.includes(selectedYear)) {
+    selectedYear = years.includes(2020) ? 2020 : years[Math.floor(years.length / 2)];
+    slider.property("value", selectedYear);
+  }
+
+  d3.select("#precipHeatYearLabel").text(selectedYear);
+
+  const data = allRows
+    .filter(d => d.year === selectedYear)
+    .sort((a, b) => CITIES.indexOf(a.city) - CITIES.indexOf(b.city));
+
+  const W = svg.node().clientWidth || 900;
+  const H = svg.node().clientHeight || 360;
+  const m = { top: 36, right: 24, bottom: 58, left: 64 };
+  const w = W - m.left - m.right;
+  const h = H - m.top - m.bottom;
+
+  const g = svg.append("g")
+    .attr("transform", `translate(${m.left},${m.top})`);
+
+  const x = d3.scaleBand()
+    .domain(CITIES)
+    .range([0, w])
+    .padding(0.25);
+
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(allRows, d => d.precip_mm)])
+    .nice()
+    .range([h, 0]);
+
+  const color = d3.scaleSequential()
+    .domain(d3.extent(allRows, d => d.precip_mm))
+    .interpolator(d3.interpolateBlues);
+
+  g.append("g")
+    .attr("class", "grid")
+    .call(d3.axisLeft(y).tickSize(-w).tickFormat(""));
+
+  g.selectAll(".precip-bar")
+    .data(data)
+    .join("rect")
+    .attr("class", "precip-bar")
+    .attr("x", d => x(d.city))
+    .attr("y", d => y(d.precip_mm))
+    .attr("width", x.bandwidth())
+    .attr("height", d => h - y(d.precip_mm))
+    .attr("fill", d => color(d.precip_mm))
+    .on("mousemove", function(event, d) {
+      showTip(
+        `<strong>${d.city}</strong> · ${SSP_LABELS[scenario]}<br/>` +
+        `Year: ${d.year}<br/>` +
+        `<strong>${d.precip_mm.toFixed(3)} mm/day</strong>`,
+        event
+      );
+    })
+    .on("mouseleave", hideTip);
+
+  g.selectAll(".bar-label")
+    .data(data)
+    .join("text")
+    .attr("class", "axis-label")
+    .attr("x", d => x(d.city) + x.bandwidth() / 2)
+    .attr("y", d => y(d.precip_mm) - 6)
+    .attr("text-anchor", "middle")
+    .text(d => d.precip_mm.toFixed(2));
+
+  g.append("g")
+    .attr("class", "axis")
+    .attr("transform", `translate(0,${h})`)
+    .call(d3.axisBottom(x));
+
+  g.append("g")
+    .attr("class", "axis")
+    .call(d3.axisLeft(y).ticks(6));
+
+  g.append("text")
+    .attr("class", "axis-label")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -h / 2)
+    .attr("y", -46)
+    .attr("text-anchor", "middle")
+    .text("Precipitation (mm/day)");
+
+  g.append("text")
+    .attr("class", "axis-label")
+    .attr("x", 0)
+    .attr("y", -14)
+    .text(`${selectedYear} · ${SSP_LABELS[scenario]} · darker blue = wetter`);
+}
+
+
+// ── VIZ 4 & 5 LISTENERS ─────────────────────────────────────────────────────
+
+["tempHeatScenario", "tempHeatYear"].forEach(id => {
+  d3.select(`#${id}`).on("input change", drawTempHeatmap);
+});
+
+["precipHeatScenario", "precipHeatYear"].forEach(id => {
+  d3.select(`#${id}`).on("input change", drawPrecipBarChart);
+});
 
 // ── RESIZE ───────────────────────────────────────────────────────────────────
 window.addEventListener("resize", () => {
-  if (csvData.length) { drawTemp(); drawPrecip(); }
+  if (csvData.length) {
+    drawTemp();
+    drawPrecip();
+    drawTempHeatmap();
+    drawPrecipBarChart();
+  }
   if (mrsoData) drawCAMap();
 });

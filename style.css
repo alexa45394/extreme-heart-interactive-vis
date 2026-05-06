@@ -185,6 +185,10 @@ input[type="range"] {
   color: var(--muted);
 }
 
+.precip-bar {
+  cursor: pointer;
+}
+
 /* ── SCENARIO LEGEND ── */
 .scenario-legend {
   display: flex;
