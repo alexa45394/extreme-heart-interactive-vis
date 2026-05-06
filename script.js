@@ -309,10 +309,8 @@ d3.json("data/california_mrso.json").then(data => {
   mrsoData = data;
   drawCAMap();
   d3.select("#mapScenario").on("change", drawCAMap);
-}).catch(() => {
-  d3.select("#caMap").append("text")
-    .attr("x",20).attr("y",40).attr("fill","#dc2626")
-    .text("⚠ Could not load data/california_mrso.json");
+}).catch(error => {
+  console.error("Could not load city climate data:", error);
 });
 
 function drawCAMap() {
