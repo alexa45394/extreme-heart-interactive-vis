@@ -1,151 +1,975 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>CMIP6 Climate Futures</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Tsunami Risk Dashboard | Zoomable World Map</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0a0a2a 0%, #1a1a4e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .dashboard { max-width: 1400px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 25px; }
+        h1 { color: white; font-size: 2rem; margin-bottom: 8px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .subtitle { color: #a0aec0; font-size: 0.9rem; margin-bottom: 5px; }
+        .disclaimer { color: #f39c12; font-size: 0.75rem; margin-top: 5px; }
+        
+        .basin-selector {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 60px;
+            padding: 8px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .basin-label { color: white; font-weight: 600; font-size: 0.85rem; }
+        .basin-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+        .basin-btn {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 8px 20px;
+            border-radius: 40px;
+            color: #cbd5e0;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+        }
+        .basin-btn:hover { background: rgba(0, 180, 216, 0.3); border-color: #00b4d8; transform: translateY(-2px); }
+        .basin-btn.active { background: #00b4d8; color: white; border-color: #00b4d8; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.4); }
+        
+        .zoom-controls {
+            background: rgba(0,0,0,0.6);
+            border-radius: 30px;
+            padding: 5px 10px;
+            display: inline-flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .zoom-btn {
+            background: #2d3748;
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .zoom-btn:hover { background: #00b4d8; transform: scale(1.05); }
+        .reset-btn {
+            background: #4a5568;
+            border: none;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .reset-btn:hover { background: #e74c3c; }
+        
+        .main-content { display: flex; gap: 25px; flex-wrap: wrap; }
+        .map-container {
+            flex: 1.3;
+            min-width: 550px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            padding: 15px;
+            backdrop-filter: blur(5px);
+        }
+        .map-wrapper {
+            position: relative;
+            width: 100%;
+            height: 550px;
+            overflow: hidden;
+            border-radius: 12px;
+            background: #0f172a;
+        }
+        .map {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        .map:active { cursor: grabbing; }
+        .map svg { width: 100%; height: 100%; }
+        
+        .map-legend {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #cbd5e0; }
+        .legend-color { width: 20px; height: 12px; border-radius: 3px; }
+        .legend-color.critical { background: #8b0000; }
+        .legend-color.high { background: #d62728; }
+        .legend-color.medium { background: #ff7f0e; }
+        .legend-color.low { background: #f39c12; }
+        .legend-color.minimal { background: #2ca02c; }
+        .legend-color.no-data { background: #4a5568; }
+        
+        .basin-dot { cursor: pointer; transition: r 0.2s, filter 0.2s; }
+        .basin-dot:hover { filter: drop-shadow(0 0 8px rgba(0, 180, 216, 0.8)); r: 14; }
+        .basin-dot.selected { fill: #ffd700; stroke: #00b4d8; stroke-width: 3; r: 14; }
+        
+        .country-panel {
+            width: 480px;
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+            overflow-y: auto;
+            max-height: 750px;
+        }
+        .country-panel.hidden { display: none; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0; }
+        .panel-header h2 { color: #1a202c; font-size: 1.4rem; font-weight: 700; }
+        .close-btn { background: #4a5568; color: white; border: none; padding: 8px 20px; border-radius: 25px; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all 0.3s; }
+        .close-btn:hover { background: #2d3748; transform: translateX(-3px); }
+        
+        .country-basic-info {
+            background: #f0f4f8;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .info-row { display: flex; justify-content: space-between; font-size: 0.8rem; }
+        .info-row span:first-child { font-weight: 600; color: #4a5568; }
+        .info-row span:last-child { color: #2d3748; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-card h4 { font-size: 0.7rem; color: #718096; margin-bottom: 6px; text-transform: uppercase; }
+        .stat-value { font-size: 1.2rem; font-weight: 700; color: #2d3748; }
+        .stat-value.increase { color: #e74c3c; }
+        
+        .vulnerability-meter {
+            background: #1a202c;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .vulnerability-meter h4 { color: white; font-size: 0.85rem; margin-bottom: 12px; }
+        .meter-bar { height: 20px; background: #4a5568; border-radius: 10px; overflow: hidden; }
+        .meter-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c, #8b0000); border-radius: 10px; transition: width 0.5s ease; }
+        .meter-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10px; color: #a0aec0; }
+        .vulnerability-text { margin-top: 12px; font-size: 0.8rem; color: #cbd5e0; line-height: 1.4; }
+        
+        .risk-factors {
+            background: #fff5f0;
+            border-left: 4px solid #e74c3c;
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .risk-factors h4 { font-size: 0.8rem; margin-bottom: 8px; color: #c0392b; }
+        .risk-factors ul { list-style: none; font-size: 0.75rem; color: #4a5568; }
+        .risk-factors li { padding: 4px 0; }
+        
+        .chart-container { margin: 20px 0; }
+        .chart-container h4 { font-size: 0.85rem; margin-bottom: 10px; color: #2d3748; }
+        .trend-chart, .amplification-chart { background: #f7fafc; border-radius: 12px; padding: 10px; min-height: 200px; }
+        .trend-chart svg, .amplification-chart svg { width: 100%; height: 180px; }
+        
+        .interpretation-panel {
+            background: #ebf8ff;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .interpretation-panel h4 { font-size: 0.85rem; margin-bottom: 8px; color: #2c5282; }
+        .interpretation-panel p { font-size: 0.8rem; color: #2d3748; line-height: 1.5; }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading-overlay.hidden { display: none; }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #00b4d8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .loading-overlay p { color: white; margin-top: 15px; }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            pointer-events: none;
+            z-index: 100;
+            max-width: 220px;
+            line-height: 1.4;
+        }
+        .basin-note { font-size: 11px; color: #a0aec0; text-align: center; margin-top: 10px; }
+        .stats-summary {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 10px 15px;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 11px;
+            color: #a0aec0;
+        }
+    </style>
 </head>
 <body>
+<div class="dashboard">
+    <header>
+        <h1>🌊 Global Tsunami Risk Assessment Dashboard</h1>
+        <p class="subtitle">🖱️ Drag to pan | Scroll to zoom | Click ocean basins to highlight at-risk countries | Hover for country details</p>
+        <p class="disclaimer">⚠️ Tsunamis cannot be predicted by CMIP6 - these visualizations show sea level rise which amplifies tsunami inundation</p>
+    </header>
 
-  <div class="page-header">
-    <h1>CMIP6 Climate Futures</h1>
-    <p class="subtitle">Projected temperature, precipitation, and soil moisture for US cities and California — GFDL-ESM4 &amp; MPI-ESM1-2-LR models</p>
-  </div>
-
-  <!-- ── VIZ 1: TEMPERATURE ── -->
-  <section class="viz-block">
-    <div class="viz-title-row">
-      <h2>Temperature Projections</h2>
-      <p class="viz-desc">Annual mean near-surface temperature (°F) by city and emissions scenario, 1950–2100.</p>
+    <div class="basin-selector">
+        <span class="basin-label">🌊 Select Ocean Basin:</span>
+        <div class="basin-buttons" id="basin-buttons">
+            <button class="basin-btn" data-basin="pacific">🌏 Pacific Ocean</button>
+            <button class="basin-btn" data-basin="indian">🌍 Indian Ocean</button>
+            <button class="basin-btn" data-basin="atlantic">🌎 Atlantic Ocean</button>
+            <button class="basin-btn" data-basin="arctic">❄️ Arctic Ocean</button>
+        </div>
     </div>
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="tempCity">City</label>
-        <select id="tempCity"></select>
-      </div>
-      <div class="ctrl-group">
-        <label for="tempScenario">Scenario</label>
-        <select id="tempScenario"></select>
-      </div>
+    <div class="main-content">
+        <div class="map-container">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px; gap: 8px;">
+                <button class="zoom-btn" id="zoom-in-btn">+</button>
+                <button class="zoom-btn" id="zoom-out-btn">-</button>
+                <button class="reset-btn" id="reset-view-btn">Reset View</button>
+            </div>
+            <div class="map-wrapper" id="map-wrapper">
+                <div id="world-map" class="map"></div>
+            </div>
+            <div class="map-legend">
+                <div class="legend-item"><div class="legend-color critical"></div> Critical Risk (80-100%)</div>
+                <div class="legend-item"><div class="legend-color high"></div> High Risk (60-80%)</div>
+                <div class="legend-item"><div class="legend-color medium"></div> Medium Risk (40-60%)</div>
+                <div class="legend-item"><div class="legend-color low"></div> Low Risk (20-40%)</div>
+                <div class="legend-item"><div class="legend-color minimal"></div> Minimal Risk (0-20%)</div>
+                <div class="legend-item"><div class="legend-color no-data"></div> No Data / Landlocked</div>
+            </div>
+            <div class="basin-note">🔵 Blue dots = Ocean basins (click to highlight at-risk countries)</div>
+            <div class="stats-summary" id="data-summary"></div>
+        </div>
+
+        <div id="country-panel" class="country-panel hidden">
+            <div class="panel-header">
+                <h2 id="country-name">Select a Country</h2>
+                <button id="close-panel" class="close-btn">← Back to Map</button>
+            </div>
+            <div class="country-basic-info" id="country-basic-info">
+                <div class="info-row"><span>🌍 Region:</span> <span id="country-region">--</span></div>
+                <div class="info-row"><span>🏔️ Avg Elevation:</span> <span id="country-elevation">--</span></div>
+                <div class="info-row"><span>👥 Population:</span> <span id="country-population">--</span></div>
+                <div class="info-row"><span>🔥 Ring of Fire:</span> <span id="country-ring">--</span></div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card"><h4>📈 SLR 2020</h4><div class="stat-value" id="slr-2020">-- cm</div></div>
+                <div class="stat-card"><h4>🎯 SLR 2030 (5-Yr)</h4><div class="stat-value" id="slr-2030">-- cm</div></div>
+                <div class="stat-card"><h4>🎯 SLR 2100 (100-Yr)</h4><div class="stat-value" id="slr-2100">-- cm</div></div>
+                <div class="stat-card"><h4>📈 Change (2030→2100)</h4><div class="stat-value" id="slr-change">-- cm</div></div>
+            </div>
+            <div class="vulnerability-meter">
+                <h4>⚠️ Tsunami Vulnerability Score</h4>
+                <div class="meter-bar"><div class="meter-fill" id="meter-fill" style="width: 0%"></div></div>
+                <div class="meter-labels"><span>Low</span><span>Medium</span><span>High</span><span>Critical</span></div>
+                <p id="vulnerability-text" class="vulnerability-text">--</p>
+            </div>
+            <div class="risk-factors">
+                <h4>📋 Risk Factors</h4>
+                <ul id="risk-factors-list"><li>• Select a country to see detailed risk factors</li></ul>
+            </div>
+            <div class="chart-container"><h4>📈 Sea Level Rise Trend (2020-2100)</h4><div id="trend-chart" class="trend-chart"></div></div>
+            <div class="chart-container"><h4>🌊 Tsunami Wave Amplification (10m tsunami)</h4><div id="amplification-chart" class="amplification-chart"></div></div>
+            <div class="interpretation-panel"><h4>💡 What This Means for Tsunami Risk</h4><p id="interpretation-text">Select a country to see detailed tsunami risk assessment.</p></div>
+        </div>
     </div>
+    <div id="loading-overlay" class="loading-overlay"><div class="spinner"></div><p>Loading global sea level data...</p></div>
+</div>
 
-    <div class="chart-container">
-      <svg id="tempChart"></svg>
-    </div>
+<script>
+// ====================================================================
+// NAME MAPPING: Match JSON country names to Map names
+// ====================================================================
+const countryNameMap = {
+    "United States of America": "United States",
+    "United States": "United States",
+    "United Kingdom": "United Kingdom",
+    "Russia": "Russia",
+    "China": "China",
+    "India": "India",
+    "Indonesia": "Indonesia",
+    "Brazil": "Brazil",
+    "Australia": "Australia",
+    "Japan": "Japan",
+    "Germany": "Germany",
+    "France": "France",
+    "Italy": "Italy",
+    "Spain": "Spain",
+    "Canada": "Canada",
+    "Mexico": "Mexico",
+    "South Africa": "South Africa",
+    "Argentina": "Argentina",
+    "Chile": "Chile",
+    "Peru": "Peru",
+    "Colombia": "Colombia",
+    "Venezuela": "Venezuela",
+    "Egypt": "Egypt",
+    "Nigeria": "Nigeria",
+    "Kenya": "Kenya",
+    "Tanzania": "Tanzania",
+    "Thailand": "Thailand",
+    "Vietnam": "Vietnam",
+    "Philippines": "Philippines",
+    "Malaysia": "Malaysia",
+    "Myanmar": "Myanmar",
+    "Bangladesh": "Bangladesh",
+    "Pakistan": "Pakistan",
+    "Sri Lanka": "Sri Lanka",
+    "Turkey": "Turkey",
+    "Iran": "Iran",
+    "Iraq": "Iraq",
+    "Saudi Arabia": "Saudi Arabia",
+    "Yemen": "Yemen",
+    "Oman": "Oman",
+    "United Arab Emirates": "United Arab Emirates",
+    "Qatar": "Qatar",
+    "Kuwait": "Kuwait",
+    "Israel": "Israel",
+    "Lebanon": "Lebanon",
+    "Syria": "Syria",
+    "Jordan": "Jordan",
+    "Poland": "Poland",
+    "Ukraine": "Ukraine",
+    "Romania": "Romania",
+    "Bulgaria": "Bulgaria",
+    "Greece": "Greece",
+    "Netherlands": "Netherlands",
+    "Belgium": "Belgium",
+    "Portugal": "Portugal",
+    "Sweden": "Sweden",
+    "Norway": "Norway",
+    "Finland": "Finland",
+    "Denmark": "Denmark",
+    "Ireland": "Ireland",
+    "Iceland": "Iceland",
+    "Croatia": "Croatia",
+    "Albania": "Albania",
+    "Montenegro": "Montenegro",
+    "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+    "Slovenia": "Slovenia",
+    "Lithuania": "Lithuania",
+    "Latvia": "Latvia",
+    "Estonia": "Estonia",
+    "Bahamas": "Bahamas",
+    "Barbados": "Barbados",
+    "Trinidad and Tobago": "Trinidad and Tobago",
+    "Fiji": "Fiji",
+    "Solomon Islands": "Solomon Islands",
+    "Vanuatu": "Vanuatu",
+    "Benin": "Benin",
+    "Togo": "Togo",
+    "Sierra Leone": "Sierra Leone",
+    "Liberia": "Liberia",
+    "Côte d'Ivoire": "Côte d'Ivoire",
+    "Ghana": "Ghana",
+    "Gabon": "Gabon",
+    "Republic of Congo": "Republic of Congo",
+    "Angola": "Angola",
+    "Namibia": "Namibia"
+};
 
-    <div class="scenario-legend" id="tempLegend"></div>
-  </section>
+function getJsonCountryName(mapName) {
+    return countryNameMap[mapName] || mapName;
+}
 
-  <!-- ── VIZ 2: PRECIPITATION ── -->
-  <section class="viz-block shaded">
-    <div class="viz-title-row">
-      <h2>Precipitation Projections</h2>
-      <p class="viz-desc">Annual mean precipitation (mm/day) by city and emissions scenario, 1950–2100.</p>
-    </div>
+// ====================================================================
+// GLOBAL DATA AND STATE
+// ====================================================================
+let currentBasin = "pacific";
+let currentCountry = null;
+let seaLevelData = null;
+let svg, projection, path, g;
+let zoom;
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="precipCity">City</label>
-        <select id="precipCity"></select>
-      </div>
-      <div class="ctrl-group">
-        <label for="precipScenario">Scenario</label>
-        <select id="precipScenario"></select>
-      </div>
-    </div>
+const oceanBasins = [
+    { name: "pacific", lat: 0, lon: -160, label: "Pacific Ocean", color: "#00b4d8" },
+    { name: "indian", lat: -10, lon: 80, label: "Indian Ocean", color: "#00b4d8" },
+    { name: "atlantic", lat: 10, lon: -30, label: "Atlantic Ocean", color: "#00b4d8" },
+    { name: "arctic", lat: 85, lon: 0, label: "Arctic Ocean", color: "#00b4d8" }
+];
 
-    <div class="chart-container">
-      <svg id="precipChart"></svg>
-    </div>
+const basinCountries = {
+    pacific: ["United States", "Japan", "Philippines", "Indonesia", "Mexico", "Chile", "Peru", "Canada", "Russia", "Australia", "Papua New Guinea", "Fiji", "Solomon Islands", "Vanuatu"],
+    indian: ["India", "Bangladesh", "Indonesia", "Pakistan", "Thailand", "Myanmar", "Sri Lanka", "Malaysia", "Saudi Arabia", "Yemen", "Oman", "Somalia", "Kenya", "Tanzania", "Mozambique", "South Africa"],
+    atlantic: ["United States", "Brazil", "Nigeria", "United Kingdom", "France", "Spain", "Argentina", "Canada", "Mexico", "South Africa", "Ghana", "Côte d'Ivoire", "Angola", "Namibia", "Norway", "Sweden"],
+    arctic: ["Russia", "Canada", "United States", "Norway", "Sweden", "Finland", "Iceland", "Denmark", "Greenland"]
+};
 
-    <div class="scenario-legend" id="precipLegend"></div>
-  </section>
+function getRiskColor(vulnerability) {
+    if (vulnerability >= 80) return "#8b0000";
+    if (vulnerability >= 60) return "#d62728";
+    if (vulnerability >= 40) return "#ff7f0e";
+    if (vulnerability >= 20) return "#f39c12";
+    return "#2ca02c";
+}
 
-  <!-- ── VIZ 3: CALIFORNIA MAP ── -->
-  <section class="viz-block">
-    <div class="viz-title-row">
-      <h2>California Soil Moisture Anomaly</h2>
-      <p class="viz-desc">End-of-century (2071–2100) soil moisture change vs. 1985–2014 baseline. Red = drier, blue = wetter. Model: MPI-ESM1-2-LR.</p>
-    </div>
+const tooltip = d3.select("body").append("div").attr("class", "tooltip").style("opacity", 0);
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="mapScenario">Scenario</label>
-        <select id="mapScenario"></select>
-      </div>
-    </div>
+// ====================================================================
+// LOAD DATA AND INITIALIZE
+// ====================================================================
+async function init() {
+    showLoading(true);
+    try {
+        const response = await fetch('sea_level_all_countries.json');
+        seaLevelData = await response.json();
+        const countryCount = Object.keys(seaLevelData.countries).length;
+        document.getElementById("data-summary").innerHTML = `📊 Loaded sea level data for ${countryCount} coastal countries | 🖱️ Drag to pan | Scroll to zoom`;
+        console.log(`✓ Loaded data for ${countryCount} countries`);
+        
+        await drawWorldMap();
+        addOceanBasinDots();
+        highlightBasinCountries(currentBasin);
+        setupEventListeners();
+        setupZoom();
+    } catch (error) {
+        console.error("Error loading data:", error);
+        document.getElementById("loading-overlay").innerHTML = `<div style="color:red;text-align:center">Error: ${error.message}<br>Make sure sea_level_all_countries.json is in the same folder</div>`;
+    }
+    showLoading(false);
+}
 
-    <div class="map-container">
-      <svg id="caMap"></svg>
-      <div class="colorbar-row">
-        <span class="cb-label red-text">← Drier</span>
-        <svg id="colorbar" width="240" height="16"></svg>
-        <span class="cb-label blue-text">Wetter →</span>
-      </div>
-    </div>
-  </section>
+async function drawWorldMap() {
+    const container = document.getElementById("world-map");
+    container.innerHTML = "";
+    const width = container.clientWidth;
+    const height = 550;
+    
+    svg = d3.select("#world-map")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .call(d3.zoom().on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        }))
+        .append("g");
+    
+    g = svg;
+    
+    projection = d3.geoMercator()
+        .scale(100)
+        .translate([width / 2, height / 1.5]);
+    
+    path = d3.geoPath().projection(projection);
+    
+    try {
+        const worldMapData = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json");
+        const countries = topojson.feature(worldMapData, worldMapData.objects.countries);
+        
+        g.append("g")
+            .selectAll("path")
+            .data(countries.features)
+            .enter()
+            .append("path")
+            .attr("class", "country")
+            .attr("d", path)
+            .attr("fill", d => {
+                const mapName = d.properties.name;
+                const jsonName = getJsonCountryName(mapName);
+                if (seaLevelData && seaLevelData.countries[jsonName]) {
+                    const data = seaLevelData.countries[jsonName];
+                    const slr2100 = data.slr_cm[data.slr_cm.length - 1];
+                    const elevation = data.elevation_m;
+                    let vulnerability = elevation > 0 ? (slr2100 / 100 / elevation) * 100 : 100;
+                    vulnerability = Math.min(100, vulnerability);
+                    return getRiskColor(vulnerability);
+                }
+                return "#4a5568";
+            })
+            .attr("stroke", "#2d3748")
+            .attr("stroke-width", 0.5)
+            .on("click", (event, d) => {
+                const mapName = d.properties.name;
+                const jsonName = getJsonCountryName(mapName);
+                if (seaLevelData && seaLevelData.countries[jsonName]) {
+                    selectCountry(jsonName);
+                } else {
+                    tooltip.transition().duration(200).style("opacity", 0.9);
+                    tooltip.html(`<strong>${mapName}</strong><br>No sea level data available (landlocked or missing from dataset)`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                    setTimeout(() => tooltip.transition().duration(500).style("opacity", 0), 2000);
+                }
+            })
+            .on("mouseover", (event, d) => {
+                const mapName = d.properties.name;
+                const jsonName = getJsonCountryName(mapName);
+                if (seaLevelData && seaLevelData.countries[jsonName]) {
+                    const data = seaLevelData.countries[jsonName];
+                    const slr2100 = data.slr_cm[data.slr_cm.length - 1];
+                    const elevation = data.elevation_m;
+                    let vulnerability = elevation > 0 ? (slr2100 / 100 / elevation) * 100 : 100;
+                    vulnerability = Math.min(100, vulnerability);
+                    tooltip.transition().duration(200).style("opacity", 0.9);
+                    tooltip.html(`<strong>${mapName}</strong><br>Vulnerability: ${vulnerability.toFixed(0)}%<br>Sea Level Rise: ${slr2100.toFixed(0)}cm`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                } else {
+                    tooltip.transition().duration(200).style("opacity", 0.9);
+                    tooltip.html(`<strong>${mapName}</strong><br>No sea level projection data`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                }
+            })
+            .on("mouseout", () => {
+                tooltip.transition().duration(500).style("opacity", 0);
+            });
+        
+    } catch (error) {
+        console.log("Error loading map from CDN, using simplified map");
+        drawSimpleMap();
+    }
+}
 
-    <!-- ── VIZ 4: TEMPERATURE HEATMAP ── -->
-  <section class="viz-block shaded">
-    <div class="viz-title-row">
-      <h2>Temperature Heatmap</h2>
-      <p class="viz-desc">Annual mean temperature (°F) across cities and years under a selected emissions scenario.</p>
-    </div>
+function setupZoom() {
+    const mapWrapper = document.getElementById("map-wrapper");
+    const mapElement = document.getElementById("world-map");
+    
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    
+    const updateTransform = () => {
+        const svgElement = mapElement.querySelector("svg");
+        if (svgElement) {
+            const gElement = svgElement.querySelector("g");
+            if (gElement) {
+                gElement.setAttribute("transform", `translate(${translateX},${translateY}) scale(${scale})`);
+            }
+        }
+    };
+    
+    document.getElementById("zoom-in-btn").onclick = () => {
+        scale = Math.min(scale * 1.3, 8);
+        updateTransform();
+    };
+    
+    document.getElementById("zoom-out-btn").onclick = () => {
+        scale = Math.max(scale / 1.3, 0.5);
+        updateTransform();
+    };
+    
+    document.getElementById("reset-view-btn").onclick = () => {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        updateTransform();
+    };
+    
+    let isDragging = false;
+    let startX, startY;
+    
+    mapElement.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".country") || e.target.closest(".basin-dot")) return;
+        isDragging = true;
+        startX = e.clientX - translateX;
+        startY = e.clientY - translateY;
+        mapElement.style.cursor = "grabbing";
+    });
+    
+    window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        translateX = e.clientX - startX;
+        translateY = e.clientY - startY;
+        updateTransform();
+    });
+    
+    window.addEventListener("mouseup", () => {
+        isDragging = false;
+        mapElement.style.cursor = "grab";
+    });
+    
+    mapElement.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? 0.85 : 1.15;
+        scale = Math.min(Math.max(scale * delta, 0.5), 8);
+        updateTransform();
+    }, { passive: false });
+    
+    mapElement.style.cursor = "grab";
+}
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="tempHeatScenario">Scenario</label>
-        <select id="tempHeatScenario"></select>
-      </div>
+function drawSimpleMap() {
+    g.append("rect")
+        .attr("width", "100%")
+        .attr("height", "100%")
+        .attr("fill", "#1a2632");
+    
+    g.append("text")
+        .attr("x", "50%")
+        .attr("y", "50%")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#a0aec0")
+        .text("World Map - Click on a country to see tsunami risk");
+}
 
-      <div class="ctrl-group">
-        <label for="tempHeatYear">Selected Year</label>
-        <input type="range" id="tempHeatYear" min="1950" max="2100" step="1" value="2020">
-        <span id="tempHeatYearLabel">2020</span>
-      </div>
-    </div>
+function addOceanBasinDots() {
+    oceanBasins.forEach(basin => {
+        const coords = projection([basin.lon, basin.lat]);
+        if (coords) {
+            g.append("circle")
+                .attr("cx", coords[0])
+                .attr("cy", coords[1])
+                .attr("r", 12)
+                .attr("class", "basin-dot")
+                .attr("data-basin", basin.name)
+                .attr("fill", basin.color)
+                .attr("stroke", "white")
+                .attr("stroke-width", 2)
+                .attr("opacity", 0.85)
+                .on("click", (event) => {
+                    event.stopPropagation();
+                    setActiveBasin(basin.name);
+                })
+                .on("mouseover", (event) => {
+                    tooltip.transition().duration(200).style("opacity", 0.9);
+                    tooltip.html(`<strong>${basin.label}</strong><br>Click to highlight most populous countries at risk`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", () => {
+                    tooltip.transition().duration(500).style("opacity", 0);
+                });
+            
+            g.append("text")
+                .attr("x", coords[0])
+                .attr("y", coords[1] - 15)
+                .attr("text-anchor", "middle")
+                .style("font-size", "8px")
+                .style("fill", "#cbd5e0")
+                .style("font-weight", "bold")
+                .text(basin.label.split(" ")[0]);
+        }
+    });
+}
 
-    <div class="chart-container">
-      <svg id="tempHeatmap"></svg>
-    </div>
-  </section>
+function setActiveBasin(basin) {
+    currentBasin = basin;
+    
+    document.querySelectorAll(".basin-btn").forEach(btn => {
+        if (btn.dataset.basin === basin) {
+            btn.classList.add("active");
+        } else {
+            btn.classList.remove("active");
+        }
+    });
+    
+    g.selectAll(".basin-dot")
+        .attr("stroke-width", 2)
+        .attr("stroke", "white")
+        .classed("selected", false);
+    
+    g.selectAll(".basin-dot")
+        .filter(function() { return d3.select(this).attr("data-basin") === basin; })
+        .attr("stroke-width", 3)
+        .attr("stroke", "#ffd700")
+        .classed("selected", true);
+    
+    highlightBasinCountries(basin);
+}
 
-  <!-- ── VIZ 5: PRECIPITATION HEATMAP ── -->
-  <section class="viz-block">
-    <div class="viz-title-row">
-      <h2>Precipitation by City</h2>
-      <p class="viz-desc">Annual mean precipitation (mm/day) across cities for a selected year and emissions scenario.</p>
-    </div>
+function highlightBasinCountries(basin) {
+    const highlightCountries = basinCountries[basin];
+    
+    g.selectAll(".country").attr("opacity", d => {
+        const mapName = d?.properties?.name;
+        const jsonName = getJsonCountryName(mapName);
+        if (highlightCountries.includes(jsonName) && seaLevelData?.countries[jsonName]) {
+            return 1;
+        }
+        return 0.25;
+    });
+    
+    // No yellow text labels - removed as requested
+}
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="precipHeatScenario">Scenario</label>
-        <select id="precipHeatScenario"></select>
-      </div>
+function selectCountry(countryName) {
+    currentCountry = countryName;
+    const countryData = seaLevelData.countries[countryName];
+    
+    if (!countryData) return;
+    
+    document.getElementById("country-panel").classList.remove("hidden");
+    document.getElementById("country-name").textContent = countryName;
+    
+    document.getElementById("country-region").textContent = countryData.region || "Unknown";
+    document.getElementById("country-elevation").textContent = `${countryData.elevation_m} m`;
+    document.getElementById("country-population").textContent = `${countryData.pop_m} million`;
+    document.getElementById("country-ring").textContent = countryData.ring_fire ? "Yes (Pacific Ring of Fire)" : "No";
+    
+    const years = seaLevelData.years;
+    const slrValues = countryData.slr_cm;
+    const slr2020 = slrValues[0];
+    const slr2030 = slrValues[6];
+    const slr2100 = slrValues[slrValues.length - 1];
+    const slrChange = slr2100 - slr2030;
+    
+    document.getElementById("slr-2020").innerHTML = `${slr2020.toFixed(0)} cm`;
+    document.getElementById("slr-2030").innerHTML = `${slr2030.toFixed(0)} cm`;
+    document.getElementById("slr-2100").innerHTML = `${slr2100.toFixed(0)} cm`;
+    
+    const changeElem = document.getElementById("slr-change");
+    changeElem.innerHTML = `${slrChange > 0 ? "+" : ""}${slrChange.toFixed(0)} cm`;
+    
+    const elevation = countryData.elevation_m;
+    let vulnerability = elevation > 0 ? (slr2100 / 100 / elevation) * 100 : 100;
+    vulnerability = Math.min(100, vulnerability);
+    
+    document.getElementById("meter-fill").style.width = `${vulnerability}%`;
+    
+    let riskLevel, riskText;
+    if (vulnerability >= 80) {
+        riskLevel = "CRITICAL";
+        riskText = "This country faces CRITICAL tsunami risk. Sea level rise will submerge most coastal areas, and any tsunami will cause catastrophic flooding.";
+    } else if (vulnerability >= 60) {
+        riskLevel = "HIGH";
+        riskText = "HIGH tsunami risk. Major coastal cities will experience severe flooding from tsunamis, with evacuation becoming increasingly difficult.";
+    } else if (vulnerability >= 40) {
+        riskLevel = "MEDIUM-HIGH";
+        riskText = "Substantial tsunami risk. Low-lying coastal areas are vulnerable, requiring enhanced early warning systems.";
+    } else if (vulnerability >= 20) {
+        riskLevel = "MEDIUM";
+        riskText = "Moderate tsunami risk. While some coastal areas are vulnerable, higher elevation provides natural protection.";
+    } else {
+        riskLevel = "LOW";
+        riskText = "Lower tsunami risk. Higher elevation and favorable geography reduce the impact of sea level rise.";
+    }
+    
+    document.getElementById("vulnerability-text").innerHTML = `<strong>Risk Level: ${riskLevel}</strong><br>${riskText}`;
+    
+    updateRiskFactors(countryData, slr2100);
+    drawTrendChart(years, slrValues);
+    drawAmplificationChart(slr2030, slr2100);
+    updateInterpretation(countryName, countryData, slr2030, slr2100, vulnerability);
+}
 
-      <div class="ctrl-group">
-        <label for="precipHeatYear">Selected Year</label>
-        <input type="range" id="precipHeatYear" min="1950" max="2100" step="1" value="2020">
-        <span id="precipHeatYearLabel">2020</span>
-      </div>
-    </div>
+function updateRiskFactors(data, slr2100) {
+    const factors = [];
+    
+    if (data.elevation_m < 5) factors.push("🔴 EXTREME: Very low elevation (<5m) - severe inundation risk");
+    else if (data.elevation_m < 20) factors.push("🟠 HIGH: Low elevation (<20m) - significant flooding risk");
+    else if (data.elevation_m < 50) factors.push("🟡 MODERATE: Moderate elevation (<50m) - coastal areas vulnerable");
+    else factors.push("🟢 FAVORABLE: Higher elevation (>50m) - natural protection");
+    
+    if (data.ring_fire) factors.push("🔥 CRITICAL: Located on Pacific Ring of Fire - high earthquake/tsunami frequency");
+    else factors.push("✅ LOWER SEISMIC RISK: Not on primary subduction zones");
+    
+    if (slr2100 > 80) factors.push("📈 EXTREME SLR: >80cm projected sea level rise by 2100");
+    else if (slr2100 > 60) factors.push("📈 HIGH SLR: 60-80cm projected sea level rise");
+    else if (slr2100 > 40) factors.push("📈 MODERATE SLR: 40-60cm projected sea level rise");
+    
+    if (data.pop_m > 100) factors.push("👥 HIGH POPULATION: >100 million people at coastal risk");
+    
+    const listHtml = factors.map(f => `<li>${f}</li>`).join("");
+    document.getElementById("risk-factors-list").innerHTML = listHtml;
+}
 
-    <div class="chart-container">
-      <svg id="precipHeatmap"></svg>
-    </div>
-  </section>
+function drawTrendChart(years, slrValues) {
+    const container = document.getElementById("trend-chart");
+    container.innerHTML = "";
+    
+    const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+    const width = container.clientWidth - 40;
+    const height = 180;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    
+    const svgChart = d3.select("#trend-chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+    
+    const x = d3.scaleLinear().domain([2020, 2100]).range([0, innerWidth]);
+    const y = d3.scaleLinear().domain([0, d3.max(slrValues) * 1.1]).range([innerHeight, 0]);
+    
+    svgChart.append("path")
+        .datum(slrValues)
+        .attr("fill", "none")
+        .attr("stroke", "#00b4d8")
+        .attr("stroke-width", 2.5)
+        .attr("d", d3.line()
+            .x((d, i) => x(years[i]))
+            .y(d => y(d))
+        );
+    
+    svgChart.append("line")
+        .attr("x1", x(2030)).attr("x2", x(2030))
+        .attr("y1", 0).attr("y2", innerHeight)
+        .attr("stroke", "#27ae60").attr("stroke-width", 2).attr("stroke-dasharray", "4");
+    
+    svgChart.append("text")
+        .attr("x", x(2030) - 5).attr("y", 10)
+        .attr("text-anchor", "end").style("font-size", "8px")
+        .style("fill", "#27ae60").text("5-Yr");
+    
+    svgChart.append("line")
+        .attr("x1", x(2100)).attr("x2", x(2100))
+        .attr("y1", 0).attr("y2", innerHeight)
+        .attr("stroke", "#c0392b").attr("stroke-width", 2).attr("stroke-dasharray", "4");
+    
+    svgChart.append("text")
+        .attr("x", x(2100) - 5).attr("y", 10)
+        .attr("text-anchor", "end").style("font-size", "8px")
+        .style("fill", "#c0392b").text("100-Yr");
+    
+    svgChart.append("g")
+        .attr("transform", `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(x).tickFormat(d3.format("d")).ticks(8));
+    
+    svgChart.append("g")
+        .call(d3.axisLeft(y).tickFormat(d => `${d.toFixed(0)}cm`));
+}
 
-  <footer>
-    <p>Data: CMIP6 via Google Cloud Public Datasets · GFDL-ESM4 (NOAA) · MPI-ESM1-2-LR (Max Planck) · DSC106 UC San Diego</p>
-  </footer>
+function drawAmplificationChart(slr2030, slr2100) {
+    const container = document.getElementById("amplification-chart");
+    container.innerHTML = "";
+    
+    const waveHeights = [2, 5, 10, 15, 20];
+    const slopeTan = Math.tan(Math.PI / 90);
+    
+    const presentInundation = waveHeights.map(w => (w / slopeTan) / 1000);
+    const future2030Inundation = waveHeights.map(w => ((w + slr2030 / 100) / slopeTan) / 1000);
+    const future2100Inundation = waveHeights.map(w => ((w + slr2100 / 100) / slopeTan) / 1000);
+    
+    const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+    const width = container.clientWidth - 40;
+    const height = 180;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    
+    const svgChart = d3.select("#amplification-chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+    
+    const x = d3.scaleLinear().domain([0, 22]).range([0, innerWidth]);
+    const y = d3.scaleLinear().domain([0, d3.max(future2100Inundation) * 1.1]).range([innerHeight, 0]);
+    
+    const line = d3.line().x((d, i) => x(waveHeights[i])).y(d => y(d));
+    
+    svgChart.append("path").datum(presentInundation).attr("fill", "none").attr("stroke", "#3498db").attr("stroke-width", 2).attr("d", line);
+    svgChart.append("path").datum(future2030Inundation).attr("fill", "none").attr("stroke", "#f39c12").attr("stroke-width", 2).attr("d", line);
+    svgChart.append("path").datum(future2100Inundation).attr("fill", "none").attr("stroke", "#e74c3c").attr("stroke-width", 2).attr("d", line);
+    
+    svgChart.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).tickFormat(d => `${d}m`));
+    svgChart.append("g").call(d3.axisLeft(y).tickFormat(d => `${d.toFixed(1)}km`));
+    
+    svgChart.append("text").attr("x", innerWidth - 5).attr("y", y(presentInundation[2])).attr("text-anchor", "end").style("font-size", "7px").style("fill", "#3498db").text("2020");
+    svgChart.append("text").attr("x", innerWidth - 5).attr("y", y(future2030Inundation[2])).attr("text-anchor", "end").style("font-size", "7px").style("fill", "#f39c12").text("2030");
+    svgChart.append("text").attr("x", innerWidth - 5).attr("y", y(future2100Inundation[2])).attr("text-anchor", "end").style("font-size", "7px").style("fill", "#e74c3c").text("2100");
+}
 
-  <div class="tooltip" id="tooltip"></div>
+function updateInterpretation(countryName, data, slr2030, slr2100, vulnerability) {
+    let interpretation;
+    if (vulnerability >= 80) {
+        interpretation = `Under the SSP5-8.5 scenario, ${countryName} faces CRITICAL tsunami risk. 
+        Sea level rise of ${slr2100.toFixed(0)}cm by 2100 (vs ${slr2030.toFixed(0)}cm in 2030) will dramatically amplify tsunami inundation. 
+        A 10m tsunami would flood ${((10 + slr2100 / 100) / Math.tan(Math.PI / 90) / 1000).toFixed(1)}km inland - a ${(((10 + slr2100 / 100) / 10 - 1) * 100).toFixed(0)}% increase.`;
+    } else if (vulnerability >= 60) {
+        interpretation = `${countryName} faces HIGH tsunami risk. With ${slr2100.toFixed(0)}cm sea level rise by 2100 
+        (${slr2030.toFixed(0)}cm by 2030), tsunami waves will penetrate significantly farther inland.`;
+    } else if (vulnerability >= 40) {
+        interpretation = `${countryName} faces MEDIUM-HIGH tsunami risk. ${slr2100.toFixed(0)}cm sea level rise by 2100 
+        will increase tsunami inundation by an estimated ${((10 + slr2100 / 100) / 10 - 1) * 100}%.`;
+    } else {
+        interpretation = `${countryName} faces LOWER tsunami risk. While sea level rise of ${slr2100.toFixed(0)}cm 
+        will still increase tsunami impact, higher elevations provide natural protection.`;
+    }
+    
+    document.getElementById("interpretation-text").innerHTML = interpretation;
+}
 
-  <script src="script.js"></script>
+function setupEventListeners() {
+    document.querySelectorAll(".basin-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            setActiveBasin(btn.dataset.basin);
+        });
+    });
+    
+    document.getElementById("close-panel").addEventListener("click", () => {
+        document.getElementById("country-panel").classList.add("hidden");
+        currentCountry = null;
+        g.selectAll(".country").attr("opacity", 1);
+    });
+}
+
+function showLoading(show) {
+    const overlay = document.getElementById("loading-overlay");
+    if (show) overlay.classList.remove("hidden");
+    else overlay.classList.add("hidden");
+}
+
+init();
+</script>
 </body>
 </html>
