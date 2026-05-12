@@ -1,654 +1,464 @@
-// ── CONFIG ──────────────────────────────────────────────────────────────────
-const CITIES = ["San Diego","Los Angeles","New York","Miami","Phoenix"];
-const SSPS   = ["ssp126","ssp245","ssp370","ssp585"];
-const SSP_LABELS = {
-  ssp126: "SSP1-2.6 — Strong mitigation",
-  ssp245: "SSP2-4.5 — Intermediate",
-  ssp370: "SSP3-7.0 — High emissions",
-  ssp585: "SSP5-8.5 — Fossil fuel peak"
-};
-const SSP_COLORS = {
-  ssp126: "#16a34a",
-  ssp245: "#d97706",
-  ssp370: "#ea580c",
-  ssp585: "#dc2626"
+// ── State ──
+const S = {
+  data:null, countries:[], byName:new Map(),
+  selected:null, basin:'All', metric:'slr2100', zoom:null,
 };
 
-// ── TOOLTIP ──────────────────────────────────────────────────────────────────
-const tip = document.getElementById("tooltip");
+// ── ISO numeric id → JSON country name ──
+// countries-110m uses numeric .id only — no .properties.name
+const ISO = {
+  50:"Bangladesh", 356:"India", 144:"Sri Lanka", 104:"Myanmar",
+  764:"Thailand", 586:"Pakistan", 706:"Somalia", 834:"Tanzania",
+  508:"Mozambique", 450:"Madagascar", 404:"Kenya", 512:"Oman",
+  887:"Yemen", 364:"Iran", 462:"Maldives", 360:"Indonesia",
+  608:"Philippines", 704:"Vietnam", 392:"Japan", 156:"China",
+  410:"South Korea", 408:"North Korea", 158:"Taiwan", 152:"Chile",
+  604:"Peru", 484:"Mexico", 840:"United States (California)", 218:"Ecuador",
+  170:"Colombia", 598:"Papua New Guinea", 36:"Australia", 554:"New Zealand",
+  528:"Netherlands", 818:"Egypt", 76:"Brazil", 566:"Nigeria",
+  288:"Ghana", 686:"Senegal", 504:"Morocco", 620:"Portugal",
+  826:"UK", 250:"France", 32:"Argentina", 24:"Angola",
+  710:"South Africa", 643:"Russia", 578:"Norway", 124:"Canada",
+  304:"Greenland",
+  // Mediterranean
+  724:"Spain", 380:"Italy", 300:"Greece", 792:"Turkey",
+  434:"Libya", 788:"Tunisia", 12:"Algeria", 422:"Lebanon",
+  376:"Israel", 191:"Croatia", 8:"Albania", 760:"Syria",
+  // Red Sea / Persian Gulf
+  682:"Saudi Arabia", 784:"UAE", 414:"Kuwait", 634:"Qatar",
+  368:"Iraq", 232:"Eritrea", 262:"Djibouti", 729:"Sudan",
+  // Caribbean
+  192:"Cuba", 332:"Haiti", 214:"Dominican Republic",
+  388:"Jamaica", 862:"Venezuela", 780:"Trinidad and Tobago",
+  320:"Guatemala", 340:"Honduras", 558:"Nicaragua",
+  // Baltic
+  752:"Sweden", 208:"Denmark", 276:"Germany", 616:"Poland",
+  246:"Finland", 233:"Estonia", 428:"Latvia", 440:"Lithuania",
+  // Pacific additions
+  458:"Malaysia", 116:"Cambodia", 626:"Timor-Leste",
+  242:"Fiji", 90:"Solomon Islands", 548:"Vanuatu",
+  // Atlantic additions
+  120:"Cameroon", 266:"Gabon", 384:"Ivory Coast",
+  204:"Benin", 768:"Togo", 430:"Liberia",
+  694:"Sierra Leone", 324:"Guinea", 516:"Namibia", 478:"Mauritania",
+};
+
+// ── Binned colors — 5 quintile bins ──
+const BINS = {
+  slr2100:['#fef0d9','#fdcc8a','#fc8d59','#e34a33','#b30000'],
+  slr2050:['#fef0d9','#fdcc8a','#fc8d59','#e34a33','#b30000'],
+};
+const LEGTITLES = {
+  slr2100:'SLR by 2100 (cm above 1995–2014)',
+  slr2050:'SLR by 2050 (cm above 1995–2014)',
+};
+
+// Basin label display names
+const BASIN_LABELS = {
+  'Indian':'Indian Ocean', 'Pacific':'Pacific Ocean',
+  'Atlantic':'Atlantic Ocean', 'Mediterranean':'Mediterranean Sea',
+  'Red Sea':'Red Sea / Persian Gulf', 'Caribbean':'Caribbean Sea',
+  'Baltic':'Baltic Sea', 'Arctic':'Arctic Ocean',
+};
+
+let _Q = {};
+
+function mval(c, m) {
+  m = m || S.metric;
+  if (!c) return null;
+  if (m === 'slr2100') return slrAt(c, 2100);
+  if (m === 'slr2050') return slrAt(c, 2050);
+  return null;
+}
+
+function getQ(m) {
+  if (_Q[m]) return _Q[m];
+  const vs = S.countries.map(c => mval(c, m))
+    .filter(v => v != null && isFinite(v)).sort((a,b) => a-b);
+  const n = vs.length;
+  _Q[m] = [0,.2,.4,.6,.8,1].map(q => vs[Math.min(n-1, Math.floor(q*n))]);
+  return _Q[m];
+}
+
+function binColor(c) {
+  const v = mval(c);
+  if (v == null || !isFinite(v)) return '#d4d4d0';
+  const q = getQ(S.metric), b = BINS[S.metric];
+  if (v <= q[1]) return b[0];
+  if (v <= q[2]) return b[1];
+  if (v <= q[3]) return b[2];
+  if (v <= q[4]) return b[3];
+  return b[4];
+}
+
+// ── Helpers ──
+function fmt(v, sfx) {
+  sfx = sfx || '';
+  return (v == null || !isFinite(+v)) ? '—' : d3.format('.1f')(v) + sfx;
+}
+function yidx(yr) {
+  return !S.data ? 0 :
+    Math.max(0, Math.min(S.data.years.length-1, d3.bisectCenter(S.data.years, yr)));
+}
+function slrAt(c, yr) { return c && c.slr_cm ? c.slr_cm[yidx(yr)] : null; }
+function inBasin(c) {
+  if (S.basin === 'All') return true;
+  return (c.basin || '') === S.basin;
+}
+
+// ── Tooltip ──
+const tipEl = document.getElementById('tip');
 function showTip(html, e) {
-  tip.innerHTML = html;
-  tip.classList.add("show");
-  tip.style.left = (e.clientX + 15) + "px";
-  tip.style.top  = (e.clientY - 36) + "px";
+  tipEl.innerHTML = html;
+  tipEl.style.opacity = '1';
+  tipEl.style.left = (e.clientX + 14) + 'px';
+  tipEl.style.top  = (e.clientY + 14) + 'px';
 }
-function hideTip() { tip.classList.remove("show"); }
+function hideTip() { tipEl.style.opacity = '0'; }
 
-// ── BUILD LEGEND ─────────────────────────────────────────────────────────────
-function buildLegend(containerId) {
-  const el = document.getElementById(containerId);
-  SSPS.forEach(s => {
-    const div = document.createElement("div");
-    div.className = "leg-item";
-    div.innerHTML = `<span class="leg-dot" style="background:${SSP_COLORS[s]}"></span>${SSP_LABELS[s]}`;
-    el.appendChild(div);
+// ── Map ──
+function renderMap(world) {
+  const svg = d3.select('#map');
+  const W = svg.node().clientWidth || 1000;
+  const H = svg.node().clientHeight || 600;
+  svg.attr('viewBox', `0 0 ${W} ${H}`).html('');
+
+  const geos = topojson.feature(world, world.objects.countries).features;
+  geos.forEach(d => {
+    const name = ISO[+d.id] || null;
+    d._c = name ? (S.byName.get(name) || null) : null;
   });
-}
-buildLegend("tempLegend");
-buildLegend("precipLegend");
 
-// ── POPULATE DROPDOWNS ────────────────────────────────────────────────────────
-["tempCity","precipCity"].forEach(id => {
-  CITIES.forEach(c => d3.select(`#${id}`).append("option").text(c).attr("value", c));
-  d3.select(`#${id}`).property("value", "Los Angeles");
-});
-["tempScenario","precipScenario","mapScenario"].forEach(id => {
-  SSPS.forEach(s => {
-    d3.select(`#${id}`).append("option").text(SSP_LABELS[s]).attr("value", s);
-  });
-  d3.select(`#${id}`).property("value", "ssp245");
-});
+  const proj = d3.geoNaturalEarth1().fitSize([W,H], {type:'FeatureCollection',features:geos});
+  const path = d3.geoPath(proj);
+  const g = svg.append('g');
 
-// ── POPULATE HEATMAP DROPDOWNS ───────────────────────────────────────────────
-["tempHeatScenario", "precipHeatScenario"].forEach(id => {
-  SSPS.forEach(s => {
-    d3.select(`#${id}`).append("option").text(SSP_LABELS[s]).attr("value", s);
-  });
-  d3.select(`#${id}`).property("value", "ssp245");
-});
+  // Ocean background
+  g.append('rect').attr('width', W).attr('height', H).attr('fill', '#ddeef6');
 
-// ── VIZ 1 & 2: LINE CHARTS ───────────────────────────────────────────────────
-// Try yearly file first, fall back to monthly CSV
-let csvData = [];
-
-// We'll try the yearly file. If not found, fall back to monthly and aggregate.
-d3.csv("data/city_climate_yearly.csv")
-  .then(raw => {
-    raw.forEach(d => {
-      d.year          = +d.year;
-      d.date          = new Date(d.year, 0, 1);  // Jan 1 of that year
-      d.temperature_f = +d.temperature_f;
-      d.precip_mm     = +d.precip_mm;
-    });
-    csvData = raw;
-    drawTemp();
-    drawPrecip();
-    drawTempHeatmap();
-    drawPrecipBarChart();
-  })
-  .catch(() => {
-    // Fallback: load monthly CSV and aggregate to yearly
-    d3.csv("data/city_climate.csv")
-      .then(raw => {
-        raw.forEach(d => {
-          d.date          = new Date(d.date + "-01");
-          d.temperature_f = +d.temperature_f;
-          d.precip_mm     = +d.precip_mm;
-          d.year          = d.date.getFullYear();
-        });
-
-        // Aggregate to yearly means, filter to 1950+
-        const nested = d3.groups(
-          raw.filter(d => d.year >= 1950),
-          d => d.city, d => d.scenario, d => d.year
+  // Countries
+  g.selectAll('path').data(geos).join('path')
+    .attr('class', d => 'country' + (d._c ? ' hd' : ''))
+    .attr('d', path)
+    .attr('fill', d => d._c ? binColor(d._c) : '#d4d4d0')
+    .attr('stroke', d => d._c ? '#bbb' : 'none')
+    .attr('stroke-width', '.3px')
+    .on('mousemove', (e, d) => {
+      if (d._c) {
+        const c = d._c;
+        showTip(
+          `<b>${c.name}</b><br>` +
+          `2100: <b>${fmt(slrAt(c,2100),' cm')}</b><br>` +
+          `2050: ${fmt(slrAt(c,2050),' cm')}<br>` +
+          `Elevation: ${c.elevation_m != null ? c.elevation_m+' m' : '—'}<br>` +
+          `Pop: ${c.pop_m != null ? c.pop_m+'M' : '—'}`,
+          e
         );
+      } else {
+        showTip('No projection data', e);
+      }
+    })
+    .on('mouseleave', hideTip)
+    .on('click', (e, d) => {
+      if (!d._c) return;
+      if (S.selected === d._c) { closePanel(); } else { openPanel(d._c); }
+    });
 
-        const yearly = [];
-        for (const [city, byScenario] of nested) {
-          for (const [scenario, byYear] of byScenario) {
-            for (const [year, rows] of byYear) {
-              yearly.push({
-                year:          +year,
-                date:          new Date(+year, 0, 1),
-                city,
-                scenario,
-                temperature_f: d3.mean(rows, r => r.temperature_f),
-                precip_mm:     d3.mean(rows, r => r.precip_mm)
-              });
-            }
-          }
+  // Zoom
+  S.zoom = d3.zoom().scaleExtent([1,8]).on('zoom', ev => g.attr('transform', ev.transform));
+  svg.call(S.zoom);
+  d3.select('#zin').on('click',    () => svg.transition().call(S.zoom.scaleBy, 1.5));
+  d3.select('#zout').on('click',   () => svg.transition().call(S.zoom.scaleBy, .67));
+  d3.select('#zreset').on('click', () => svg.transition().call(S.zoom.transform, d3.zoomIdentity));
+
+  applyBasin();
+  renderLeg();
+}
+
+function recolor() {
+  _Q = {};
+  d3.selectAll('.country').transition().duration(200)
+    .attr('fill', d => d._c ? binColor(d._c) : '#d4d4d0');
+  renderLeg();
+  document.getElementById('ltitle').textContent = LEGTITLES[S.metric];
+}
+
+function applyBasin() {
+  const filtering = S.basin !== 'All';
+  d3.selectAll('.country.hd').classed('dim', d => d._c && !inBasin(d._c));
+  d3.selectAll('.country:not(.hd)').classed('dim', filtering);
+}
+
+function setSel(c) {
+  d3.selectAll('.country').each(function(d) {
+    const isSelected = d._c === c && c !== null;
+    const hasData = d._c != null;
+    d3.select(this)
+      .classed('sel', isSelected)
+      .attr('stroke', isSelected ? '#111' : hasData ? '#bbb' : 'none')
+      .attr('stroke-width', isSelected ? '1.8px' : '.3px');
+  });
+}
+
+// ── Legend ──
+function renderLeg() {
+  const q = getQ(S.metric), bins = BINS[S.metric];
+  const cont = document.getElementById('lbins');
+  cont.innerHTML = '';
+  bins.forEach((col, i) => {
+    const d = document.createElement('div');
+    d.className = 'lbin';
+    d.style.background = col;
+    d.title = `${fmt(q[i],' cm')} – ${fmt(q[i+1],' cm')}`;
+    cont.appendChild(d);
+  });
+  document.getElementById('lmin').textContent = fmt(q[0], ' cm');
+  document.getElementById('lmax').textContent = fmt(q[5], ' cm');
+}
+
+// ── Panel ──
+function openPanel(c) {
+  S.selected = c;
+  setSel(c);
+
+  const years   = S.data.years;
+  const global  = S.data.global_slr_cm;
+  const slr     = c.slr_cm;
+  const slr30   = slrAt(c, 2030);
+  const slr50   = slrAt(c, 2050);
+  const slr100  = slrAt(c, 2100);
+  const g100    = global[yidx(2100)];
+  const diff    = (slr100 != null && g100 != null) ? slr100 - g100 : null;
+
+  const basinLabel = BASIN_LABELS[c.basin] || (c.basin || '—');
+
+  document.getElementById('cpname').textContent   = c.name;
+  document.getElementById('cpmeta').textContent   = `${c.region || '—'}  ·  ${basinLabel}  ·  ${c.n_cells} CMIP6 grid cells`;
+  document.getElementById('ig-region').textContent = c.region || '—';
+  document.getElementById('ig-basin').textContent  = basinLabel;
+  document.getElementById('ig-elev').textContent   = c.elevation_m != null ? c.elevation_m + ' m' : '—';
+  document.getElementById('ig-pop').textContent    = c.pop_m != null ? c.pop_m + ' million' : '—';
+  document.getElementById('s-2030').textContent    = fmt(slr30, ' cm');
+  document.getElementById('s-2050').textContent    = fmt(slr50, ' cm');
+  document.getElementById('s-2100').textContent    = fmt(slr100, ' cm');
+  document.getElementById('cl-name').textContent   = c.name;
+
+  const vsEl = document.getElementById('s-vs');
+  if (diff != null) {
+    vsEl.textContent = (diff >= 0 ? '+' : '') + fmt(diff, ' cm');
+    vsEl.className   = 's4val ' + (diff > 1 ? 'r' : diff < -1 ? 'b' : '');
+  } else {
+    vsEl.textContent = '—';
+    vsEl.className   = 's4val';
+  }
+
+  // Key context bullets
+  const bl = [];
+  if (c.elevation_m != null && c.elevation_m <= 0)
+    bl.push(`Below sea level (${c.elevation_m} m avg elevation) — already at severe flood exposure`);
+  else if (c.elevation_m != null && c.elevation_m < 5)
+    bl.push(`Very low coastal elevation (${c.elevation_m} m) — highly sensitive to any sea level rise`);
+  else if (c.elevation_m != null && c.elevation_m < 20)
+    bl.push(`Low coastal elevation (${c.elevation_m} m) — coastal zones increasingly at risk`);
+
+  if (diff != null && diff > 5)
+    bl.push(`${fmt(diff,' cm')} above global mean — ${basinLabel} dynamics amplify local rise`);
+  else if (diff != null && diff < -5)
+    bl.push(`${fmt(Math.abs(diff),' cm')} below global mean — regional dynamics partially offset rise`);
+  else if (diff != null)
+    bl.push(`Close to global mean — limited regional deviation in the ${basinLabel}`);
+
+  if (c.pop_m != null && c.pop_m > 100)
+    bl.push(`Large coastal population (${c.pop_m}M) — high exposure to long-term sea level change`);
+
+  if (slr100 != null && slr50 != null)
+    bl.push(`${fmt(slr100 - slr50,' cm')} of additional rise occurs after 2050 — acceleration continues through end of century`);
+
+  document.getElementById('cpbullets').innerHTML = bl.map(b => `<li>${b}</li>`).join('');
+
+  // Interpretation
+  const absd = diff != null ? Math.abs(diff).toFixed(1) : '—';
+  const dir  = diff != null ? (diff >= 0 ? 'above' : 'below') : '';
+  document.getElementById('cpinterp').innerHTML =
+    `Under SSP5-8.5, <strong>${c.name}</strong> is projected to see ` +
+    `<strong>${fmt(slr100,' cm')}</strong> of sea level rise by 2100 relative to the 1995–2014 baseline — ` +
+    `${absd} cm ${dir} the global thermosteric mean of ${fmt(g100,' cm')}. ` +
+    `This regional deviation is derived from MPI-ESM1-2-LR basin-averaged ocean surface height ` +
+    `across ${c.n_cells} CMIP6 grid cells in the ${basinLabel}.`;
+
+  drawChart(years, slr, global, c.name);
+  document.getElementById('cpanel').classList.add('open');
+}
+
+function closePanel() {
+  S.selected = null;
+  setSel(null);
+  document.getElementById('cpanel').classList.remove('open');
+}
+
+// ── Trend chart ──
+function drawChart(years, slr, global, name) {
+  const cont = document.getElementById('tchart');
+  cont.innerHTML = '';
+
+  const m  = {t:22, r:88, b:36, l:46};
+  const W  = cont.clientWidth || 370;
+  const H  = 230;
+  const iW = W - m.l - m.r;
+  const iH = H - m.t - m.b;
+
+  const svg = d3.select('#tchart').append('svg')
+    .attr('width', W).attr('height', H)
+    .append('g').attr('transform', `translate(${m.l},${m.t})`);
+
+  const allV = [...slr, ...global].filter(isFinite);
+  const x = d3.scaleLinear().domain(d3.extent(years)).range([0, iW]);
+  const y = d3.scaleLinear().domain([0, d3.max(allV) * 1.08]).nice().range([iH, 0]);
+  const lg = d3.line().defined(v => isFinite(v)).curve(d3.curveMonotoneX)
+    .x((_,i) => x(years[i])).y(d => y(d));
+
+  // Small chart title (like script.js)
+  svg.append('text').attr('x', 0).attr('y', -6)
+    .style('font-family','IBM Plex Mono,monospace').style('font-size','8px')
+    .style('fill','#bbb').style('letter-spacing','.06em')
+    .text('CM ABOVE 1995–2014 BASELINE');
+
+  // Gridlines
+  svg.append('g').attr('class','grid')
+    .call(d3.axisLeft(y).tickSize(-iW).tickFormat('').ticks(4));
+
+  // Axes
+  svg.append('g').attr('class','axis').attr('transform',`translate(0,${iH})`)
+    .call(d3.axisBottom(x).ticks(5).tickFormat(d3.format('d')));
+  svg.append('g').attr('class','axis')
+    .call(d3.axisLeft(y).ticks(4).tickFormat(d => d + 'cm'));
+
+  // Global mean (dashed grey) — behind country line
+  svg.append('path').datum(global).attr('fill','none')
+    .attr('stroke','#999').attr('stroke-width',1.8).attr('stroke-dasharray','5,4')
+    .attr('d', lg);
+
+  // Global end label (right of chart)
+  const gEnd = global[global.length-1];
+  if (isFinite(gEnd)) {
+    svg.append('text').attr('x', iW+6).attr('y', y(gEnd)+4)
+      .style('font-family','IBM Plex Mono,monospace').style('font-size','8.5px')
+      .style('fill','#999').text('global avg');
+  }
+
+  // Country line (solid blue)
+  svg.append('path').datum(slr).attr('fill','none')
+    .attr('stroke','#2563eb').attr('stroke-width',2.5).attr('d', lg);
+
+  // Country end dot + label
+  const vEnd = slr[slr.length-1];
+  if (isFinite(vEnd)) {
+    svg.append('circle').attr('cx', iW).attr('cy', y(vEnd)).attr('r', 3.5)
+      .attr('fill','#2563eb');
+    svg.append('text').attr('x', iW+6).attr('y', y(vEnd)+4)
+      .style('font-family','IBM Plex Mono,monospace').style('font-size','8.5px')
+      .style('fill','#2563eb').style('font-weight','500')
+      .text(fmt(vEnd,' cm'));
+  }
+
+  // 2050 midpoint annotation on country line
+  const i50 = yidx(2050), v50 = slr[i50];
+  if (isFinite(v50)) {
+    svg.append('circle').attr('cx', x(years[i50])).attr('cy', y(v50)).attr('r', 3)
+      .attr('fill','#fff').attr('stroke','#2563eb').attr('stroke-width',1.5);
+    svg.append('text')
+      .attr('x', x(years[i50])).attr('y', y(v50) - 8)
+      .attr('text-anchor','middle')
+      .style('font-family','IBM Plex Mono,monospace').style('font-size','8px')
+      .style('fill','#2563eb').text('2050: ' + fmt(v50,' cm'));
+  }
+}
+
+// Name overrides — rename JSON keys to display names
+const NAME_OVERRIDES = {
+  'USA (California)':  'United States (California)',
+  'USA (East Coast)':  'United States (East Coast)',
+};
+
+// ── Normalize data ──
+function normalize(raw) {
+  const years  = raw.years || [];
+  const global = (raw.global_slr_cm || []).map(Number);
+  const countries = Object.entries(raw.countries || {}).map(([name, d]) => ({
+    name: NAME_OVERRIDES[name] || name,
+    lat:         +d.lat,
+    lon:         +d.lon,
+    slr_cm:      (d.slr_cm || []).map(Number),
+    elevation_m: d.elevation_m != null ? +d.elevation_m : null,
+    pop_m:       d.pop_m != null ? +d.pop_m : null,
+    region:      d.region || 'Other',
+    basin:       d.basin  || 'Other',
+    n_cells:     d.n_cells || 0,
+  })).filter(d => d.slr_cm.length === years.length);
+  return {...raw, years, global_slr_cm: global, countries};
+}
+
+// ── Search ──
+function doSearch(q) {
+  if (!q.trim()) return;
+  const m = S.countries.find(c => c.name.toLowerCase().includes(q.toLowerCase()));
+  if (m) openPanel(m);
+}
+
+// ── Init ──
+async function init() {
+  try {
+    const [raw, world] = await Promise.all([
+      d3.json('data/sea_level.json'),
+      d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'),
+    ]);
+
+    S.data      = normalize(raw);
+    S.countries = S.data.countries;
+    S.byName    = new Map(S.countries.map(d => [d.name, d]));
+
+    // Controls
+    document.getElementById('metric').addEventListener('change', e => {
+      S.metric = e.target.value;
+      recolor();
+    });
+
+    document.querySelectorAll('.bb').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const clicked = btn.dataset.basin;
+        // clicking the already-active basin (non-All) resets to All
+        if (clicked !== 'All' && S.basin === clicked) {
+          S.basin = 'All';
+          document.querySelectorAll('.bb').forEach(b =>
+            b.classList.toggle('active', b.dataset.basin === 'All'));
+        } else {
+          S.basin = clicked;
+          document.querySelectorAll('.bb').forEach(b => b.classList.toggle('active', b === btn));
         }
-        csvData = yearly;
-        drawTemp();
-        drawPrecip();
-        drawTempHeatmap();
-        drawPrecipBarChart();
-      })
-      .catch(error => {
-        console.error("Could not load city climate data:", error);
+        applyBasin();
+        if (S.selected && !inBasin(S.selected)) closePanel();
       });
     });
 
+    const si = document.getElementById('search');
+    si.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(e.target.value.trim()); });
+    si.addEventListener('input',   e => { if (e.target.value.trim().length >= 2) doSearch(e.target.value.trim()); });
 
-function drawChart(svgId, variable, citySelectId, scenarioSelectId, yLabel) {
-  const city     = d3.select(`#${citySelectId}`).property("value");
-  const scenario = d3.select(`#${scenarioSelectId}`).property("value");
-  const color    = SSP_COLORS[scenario];
+    document.getElementById('cpclose').addEventListener('click', closePanel);
 
-  const filtered = csvData.filter(d =>
-    d.city === city && d.scenario === scenario
-  ).sort((a,b) => a.date - b.date);
+    renderMap(world);
+    document.getElementById('loading').classList.add('hidden');
+    window.addEventListener('resize', () => renderMap(world));
 
-  const svg = d3.select(`#${svgId}`);
-  svg.selectAll("*").remove();
-  if (!filtered.length) return;
-
-  const W = svg.node().clientWidth  || 900;
-  const H = svg.node().clientHeight || 360;
-  const m = { top: 24, right: 24, bottom: 44, left: 58 };
-  const w = W - m.left - m.right;
-  const h = H - m.top  - m.bottom;
-  const g = svg.append("g").attr("transform",`translate(${m.left},${m.top})`);
-
-  // Scales
-  const x = d3.scaleTime()
-    .domain(d3.extent(filtered, d => d.date))
-    .range([0, w]);
-
-  const [yMin, yMax] = d3.extent(filtered, d => d[variable]);
-  const yPad = (yMax - yMin) * 0.08;
-  const y = d3.scaleLinear()
-    .domain([yMin - yPad, yMax + yPad])
-    .range([h, 0]);
-
-  // Gridlines
-  g.append("g").attr("class","grid")
-    .call(d3.axisLeft(y).tickSize(-w).tickFormat(""));
-  g.append("g").attr("class","grid")
-    .attr("transform",`translate(0,${h})`)
-    .call(d3.axisBottom(x).ticks(10).tickSize(-h).tickFormat(""));
-
-  // Axes
-  g.append("g").attr("class","axis")
-    .attr("transform",`translate(0,${h})`)
-    .call(d3.axisBottom(x).ticks(10).tickFormat(d3.timeFormat("%Y")));
-  g.append("g").attr("class","axis")
-    .call(d3.axisLeft(y).ticks(6));
-
-  // Y-label
-  g.append("text").attr("class","axis-label")
-    .attr("transform","rotate(-90)")
-    .attr("x",-h/2).attr("y",-46)
-    .attr("text-anchor","middle")
-    .text(yLabel);
-
-  // 2015 line
-  const x2015 = x(new Date("2015-01-01"));
-  if (x2015 > 0 && x2015 < w) {
-    g.append("line").attr("class","divider-line")
-      .attr("x1",x2015).attr("x2",x2015).attr("y1",0).attr("y2",h);
-    g.append("text").attr("class","axis-label")
-      .attr("x",x2015+5).attr("y",14)
-      .style("font-size","10px")
-      .text("projection →");
+  } catch(err) {
+    console.error(err);
+    document.getElementById('loading').innerHTML =
+      `<p style="color:red;padding:2rem;text-align:center;max-width:400px">
+        Could not load data.<br><br>
+        Run <code>python -m http.server 8000</code> then open <code>http://localhost:8000</code><br><br>
+        Make sure <code>data/sea_level.json</code> exists.
+      </p>`;
   }
-
-  // Area
-  g.append("path").datum(filtered)
-    .attr("fill", color).attr("opacity",.10)
-    .attr("d", d3.area()
-      .x(d => x(d.date))
-      .y0(h).y1(d => y(d[variable]))
-      .curve(d3.curveMonotoneX));
-
-  // Line
-  g.append("path").datum(filtered)
-    .attr("fill","none")
-    .attr("stroke", color)
-    .attr("stroke-width", 2.2)
-    .attr("d", d3.line()
-      .x(d => x(d.date))
-      .y(d => y(d[variable]))
-      .curve(d3.curveMonotoneX));
-
-  // Hover
-  const bisect = d3.bisector(d => d.date).left;
-  const dot = g.append("circle").attr("r",4)
-    .attr("fill",color).attr("stroke","white").attr("stroke-width",2)
-    .style("opacity",0).style("pointer-events","none");
-
-  g.append("rect")
-    .attr("fill","none").attr("pointer-events","all")
-    .attr("width",w).attr("height",h)
-    .on("mousemove", function(event) {
-      const mx = d3.pointer(event)[0];
-      const date = x.invert(mx);
-      const i = Math.min(bisect(filtered, date, 1), filtered.length - 1);
-      const d = filtered[i];
-      if (!d) return;
-      const val = d[variable];
-      dot.style("opacity",1).attr("cx",x(d.date)).attr("cy",y(val));
-      showTip(
-        `<strong>${city}</strong> · ${scenario.toUpperCase()}<br/>` +
-        `Year: ${d.date.getFullYear()}<br/>` +
-        `<strong>${val.toFixed(variable==="temperature_f" ? 1 : 3)} ${variable==="temperature_f"?"°F":"mm/day"}</strong>`,
-        event
-      );
-    })
-    .on("mouseleave",() => { dot.style("opacity",0); hideTip(); });
 }
 
-function drawTemp() {
-  drawChart("tempChart","temperature_f","tempCity","tempScenario","Temperature (°F)");
-}
-function drawPrecip() {
-  drawChart("precipChart","precip_mm","precipCity","precipScenario","Precipitation (mm/day)");
-}
-
-d3.select("#tempCity,#tempScenario").on("change", drawTemp);
-d3.select("#precipCity,#precipScenario").on("change", drawPrecip);
-
-// Re-attach individually (the above only catches the last element)
-["tempCity","tempScenario"].forEach(id =>
-  d3.select(`#${id}`).on("change", drawTemp)
-);
-["precipCity","precipScenario"].forEach(id =>
-  d3.select(`#${id}`).on("change", drawPrecip)
-);
-
-
-// ── VIZ 3: CALIFORNIA MAP ─────────────────────────────────────────────────────
-
-// Accurate California boundary (sourced from public domain US states data)
-const CA_GEOJSON = {
-  "type": "Feature",
-  "geometry": {
-    "type": "Polygon",
-    "coordinates": [[
-      [-124.211606,41.998075],[-124.019966,41.998075],[-123.551454,41.998075],
-      [-123.102900,42.003076],[-122.500988,42.008077],[-121.446777,41.977072],
-      [-120.001861,41.994969],[-119.999908,40.264519],[-120.001861,38.999542],
-      [-118.712549,38.101102],[-117.498779,37.218796],[-116.540527,36.156758],
-      [-115.854492,35.837535],[-114.634399,35.001857],[-114.627686,34.873413],
-      [-114.432373,34.869537],[-114.328613,34.687195],[-114.135254,34.256919],
-      [-114.258057,34.174290],[-114.413574,34.109577],[-114.519287,33.960953],
-      [-114.521240,33.549992],[-114.708252,33.399918],[-114.678955,33.040328],
-      [-114.499512,33.007217],[-114.477539,32.972679],[-114.724121,32.715378],
-      [-117.128906,32.531003],[-117.286987,33.138],[-117.339600,33.422],
-      [-117.470,33.296],[-117.666,33.463],[-117.928,33.621],
-      [-118.116,33.741],[-118.404,33.742],[-118.519,34.027],
-      [-118.802,34.001],[-119.218,34.146],[-119.602,34.418],
-      [-120.025,34.628],[-120.437,34.933],[-120.622,35.100],
-      [-120.897,35.428],[-121.091,35.649],[-121.335,35.783],
-      [-121.886,36.338],[-122.169,36.724],[-122.409,37.361],
-      [-122.512,37.783],[-122.515,37.929],[-122.950,37.994],
-      [-123.126,37.928],[-123.427,37.853],[-123.737,38.954],
-      [-123.693,38.547],[-123.827,38.953],[-124.110,38.999],
-      [-124.361,39.768],[-124.080,39.999],[-124.146,40.005],
-      [-124.397,40.313],[-124.558,40.748],[-124.427,41.025],
-      [-124.113,41.105],[-124.158,41.782],[-124.211606,41.998075]
-    ]]
-  }
-};
-
-let mrsoData = null;
-
-// Build colorbar
-(function buildColorbar() {
-  const svg = d3.select("#colorbar");
-  const defs = svg.append("defs");
-  const grad = defs.append("linearGradient").attr("id","cbgrad")
-    .attr("x1","0%").attr("x2","100%");
-  [
-    {o:"0%",   c:"#dc2626"},
-    {o:"40%",  c:"#fca5a5"},
-    {o:"50%",  c:"#f5f5f4"},
-    {o:"60%",  c:"#93c5fd"},
-    {o:"100%", c:"#1d4ed8"}
-  ].forEach(s => grad.append("stop").attr("offset",s.o).attr("stop-color",s.c));
-  svg.append("rect")
-    .attr("width",240).attr("height",16).attr("rx",4)
-    .attr("fill","url(#cbgrad)");
-})();
-
-d3.json("data/california_mrso.json").then(data => {
-  mrsoData = data;
-  drawCAMap();
-  d3.select("#mapScenario").on("change", drawCAMap);
-}).catch(error => {
-  console.error("Could not load city climate data:", error);
-});
-
-function drawCAMap() {
-  if (!mrsoData) return;
-  const scenario = d3.select("#mapScenario").property("value");
-  const raw = mrsoData[scenario];
-  if (!raw || !raw.length) return;
-
-  // Convert lon 0-360 → -180/180
-  const pts = raw.map(d => ({
-    lat: d.lat,
-    lon: d.lon > 180 ? d.lon - 360 : d.lon,
-    anomaly: d.anomaly
-  })).filter(d => !isNaN(d.anomaly));
-
-  const svg = d3.select("#caMap");
-  svg.selectAll("*").remove();
-
-  const W = 560, H = 500;
-  svg.attr("width", W).attr("height", H).style("width","100%");
-
-  // ── Grid spacing ──
-  const lats = [...new Set(pts.map(d => d.lat))].sort(d3.ascending);
-  const lons = [...new Set(pts.map(d => d.lon))].sort(d3.ascending);
-  const dlat = lats.length > 1 ? lats[1] - lats[0] : 1;
-  const dlon = lons.length > 1 ? lons[1] - lons[0] : 1;
-
-  // ── Mercator projection sized to SVG, fitted to California GeoJSON ──
-  const projection = d3.geoMercator()
-    .fitExtent([[24, 24], [W - 24, H - 28]], CA_GEOJSON);
-  const path = d3.geoPath().projection(projection);
-
-  // ── Color scale ──
-  const vals = pts.map(d => d.anomaly);
-  const absMax = Math.min(
-    d3.quantile(vals.map(Math.abs).sort(d3.ascending), 0.95) || 50, 150
-  );
-  const colorScale = d3.scaleDiverging()
-    .domain([-absMax, 0, absMax])
-    .interpolator(d3.interpolateRdBu);
-
-  // ── Ocean background ──
-  svg.append("rect").attr("width", W).attr("height", H).attr("fill", "#dce8f0");
-
-  // ── Clip to California outline ──
-  const defs = svg.append("defs");
-  defs.append("clipPath").attr("id","ca-clip")
-    .append("path").datum(CA_GEOJSON).attr("d", path);
-
-  // ── Draw cells using the SAME projection as the outline ──
-  const cells = svg.append("g").attr("clip-path","url(#ca-clip)");
-
-  pts.forEach(d => {
-    // Project the center point
-    const [cx, cy] = projection([d.lon, d.lat]);
-    // Project a point one cell-width away to get pixel cell size
-    const [ex] = projection([d.lon + dlon, d.lat]);
-    const [, ey] = projection([d.lon, d.lat - dlat]);
-    const pw = Math.abs(ex - cx);
-    const ph = Math.abs(ey - cy);
-
-    cells.append("rect")
-      .attr("x", cx - pw / 2)
-      .attr("y", cy - ph / 2)
-      .attr("width",  pw + 1)   // +1 to close gaps between cells
-      .attr("height", ph + 1)
-      .attr("fill", colorScale(d.anomaly))
-      .on("mousemove", function(event) {
-        showTip(
-          `Lat <strong>${d.lat.toFixed(1)}°N</strong> · Lon <strong>${d.lon.toFixed(1)}°</strong><br/>` +
-          `Anomaly: <strong>${d.anomaly > 0 ? "+" : ""}${d.anomaly.toFixed(1)} kg/m²</strong><br/>` +
-          `<span style="color:${d.anomaly < 0 ? "#dc2626" : "#1d4ed8"}">${d.anomaly < 0 ? "Drier than baseline" : "Wetter than baseline"}</span>`,
-          event
-        );
-      })
-      .on("mouseleave", hideTip);
-  });
-
-  // ── California outline on top ──
-  svg.append("path")
-    .datum(CA_GEOJSON)
-    .attr("d", path)
-    .attr("fill", "none")
-    .attr("stroke", "#1e293b")
-    .attr("stroke-width", 1.5)
-    .attr("stroke-linejoin", "round");
-
-  // ── Label ──
-  svg.append("text")
-    .attr("x", W / 2).attr("y", H - 6)
-    .attr("text-anchor", "middle")
-    .attr("fill", "#6b7589").attr("font-size", "11px")
-    .attr("font-family", "Inter, sans-serif")
-    .text(`${SSP_LABELS[scenario]} · 2071–2100 vs 1985–2014 · MPI-ESM1-2-LR`);
-}
-
-// ── VIZ 4: TEMPERATURE HEATMAP ──────────────────────────────────────────────
-
-function drawTempHeatmap() {
-  if (!csvData.length) return;
-
-  const scenario = d3.select("#tempHeatScenario").property("value");
-
-  const data = csvData
-    .filter(d => d.scenario === scenario && CITIES.includes(d.city))
-    .map(d => ({
-      ...d,
-      year: d.year ?? d.date.getFullYear()
-    }))
-    .filter(d => Number.isFinite(d.year) && Number.isFinite(d.temperature_f));
-
-  const svg = d3.select("#tempHeatmap");
-  svg.selectAll("*").remove();
-
-  if (!data.length) return;
-
-  const years = [...new Set(data.map(d => d.year))].sort(d3.ascending);
-  const cities = CITIES.filter(city => data.some(d => d.city === city));
-
-  const slider = d3.select("#tempHeatYear");
-  slider.attr("min", d3.min(years));
-  slider.attr("max", d3.max(years));
-  slider.attr("step", 1);
-
-  let selectedYear = +slider.property("value");
-
-  if (!years.includes(selectedYear)) {
-    selectedYear = years.includes(2020) ? 2020 : years[Math.floor(years.length / 2)];
-    slider.property("value", selectedYear);
-  }
-
-  d3.select("#tempHeatYearLabel").text(selectedYear);
-
-  const W = svg.node().clientWidth || 900;
-  const H = svg.node().clientHeight || 360;
-  const m = { top: 32, right: 24, bottom: 48, left: 92 };
-  const w = W - m.left - m.right;
-  const h = H - m.top - m.bottom;
-
-  const g = svg.append("g")
-    .attr("transform", `translate(${m.left},${m.top})`);
-
-  const x = d3.scaleBand()
-    .domain(years)
-    .range([0, w])
-    .paddingInner(0.02);
-
-  const y = d3.scaleBand()
-    .domain(cities)
-    .range([0, h])
-    .paddingInner(0.08);
-
-  const [minTemp, maxTemp] = d3.extent(data, d => d.temperature_f);
-
-  const color = d3.scaleSequential()
-    .domain([minTemp, maxTemp])
-    .interpolator(d3.interpolateYlOrRd);
-
-  g.selectAll(".heat-cell")
-    .data(data)
-    .join("rect")
-    .attr("class", "heat-cell")
-    .attr("x", d => x(d.year))
-    .attr("y", d => y(d.city))
-    .attr("width", x.bandwidth())
-    .attr("height", y.bandwidth())
-    .attr("fill", d => color(d.temperature_f))
-    .on("mousemove", function(event, d) {
-      showTip(
-        `<strong>${d.city}</strong> · ${SSP_LABELS[scenario]}<br/>` +
-        `Year: ${d.year}<br/>` +
-        `<strong>${d.temperature_f.toFixed(1)} °F</strong>`,
-        event
-      );
-    })
-    .on("mouseleave", hideTip);
-
-  if (x(selectedYear) !== undefined) {
-    g.append("rect")
-      .attr("class", "heat-highlight")
-      .attr("x", x(selectedYear))
-      .attr("y", 0)
-      .attr("width", x.bandwidth())
-      .attr("height", h);
-  }
-
-  const xTickYears = years.filter(year => year % 10 === 0);
-
-  g.append("g")
-    .attr("class", "heat-axis")
-    .attr("transform", `translate(0,${h})`)
-    .call(d3.axisBottom(x).tickValues(xTickYears));
-
-  g.append("g")
-    .attr("class", "heat-axis")
-    .call(d3.axisLeft(y));
-
-  g.append("text")
-    .attr("class", "axis-label")
-    .attr("x", 0)
-    .attr("y", -12)
-    .text(`${SSP_LABELS[scenario]} · darker red = hotter`);
-}
-
-
-// ── VIZ 5: PRECIPITATION BAR CHART ──────────────────────────────────────────
-
-function drawPrecipBarChart() {
-  if (!csvData.length) return;
-
-  const scenario = d3.select("#precipHeatScenario").property("value");
-
-  const allRows = csvData
-    .filter(d => d.scenario === scenario && CITIES.includes(d.city))
-    .map(d => ({
-      ...d,
-      year: d.year ?? d.date.getFullYear()
-    }))
-    .filter(d => Number.isFinite(d.year) && Number.isFinite(d.precip_mm));
-
-  const svg = d3.select("#precipHeatmap");
-  svg.selectAll("*").remove();
-
-  if (!allRows.length) return;
-
-  const years = [...new Set(allRows.map(d => d.year))].sort(d3.ascending);
-
-  const slider = d3.select("#precipHeatYear");
-  slider.attr("min", d3.min(years));
-  slider.attr("max", d3.max(years));
-  slider.attr("step", 1);
-
-  let selectedYear = +slider.property("value");
-
-  if (!years.includes(selectedYear)) {
-    selectedYear = years.includes(2020) ? 2020 : years[Math.floor(years.length / 2)];
-    slider.property("value", selectedYear);
-  }
-
-  d3.select("#precipHeatYearLabel").text(selectedYear);
-
-  const data = allRows
-    .filter(d => d.year === selectedYear)
-    .sort((a, b) => CITIES.indexOf(a.city) - CITIES.indexOf(b.city));
-
-  const W = svg.node().clientWidth || 900;
-  const H = svg.node().clientHeight || 360;
-  const m = { top: 36, right: 24, bottom: 58, left: 64 };
-  const w = W - m.left - m.right;
-  const h = H - m.top - m.bottom;
-
-  const g = svg.append("g")
-    .attr("transform", `translate(${m.left},${m.top})`);
-
-  const x = d3.scaleBand()
-    .domain(CITIES)
-    .range([0, w])
-    .padding(0.25);
-
-  const y = d3.scaleLinear()
-    .domain([0, d3.max(allRows, d => d.precip_mm)])
-    .nice()
-    .range([h, 0]);
-
-  const color = d3.scaleSequential()
-    .domain(d3.extent(allRows, d => d.precip_mm))
-    .interpolator(d3.interpolateBlues);
-
-  g.append("g")
-    .attr("class", "grid")
-    .call(d3.axisLeft(y).tickSize(-w).tickFormat(""));
-
-  g.selectAll(".precip-bar")
-    .data(data)
-    .join("rect")
-    .attr("class", "precip-bar")
-    .attr("x", d => x(d.city))
-    .attr("y", d => y(d.precip_mm))
-    .attr("width", x.bandwidth())
-    .attr("height", d => h - y(d.precip_mm))
-    .attr("fill", d => color(d.precip_mm))
-    .on("mousemove", function(event, d) {
-      showTip(
-        `<strong>${d.city}</strong> · ${SSP_LABELS[scenario]}<br/>` +
-        `Year: ${d.year}<br/>` +
-        `<strong>${d.precip_mm.toFixed(3)} mm/day</strong>`,
-        event
-      );
-    })
-    .on("mouseleave", hideTip);
-
-  g.selectAll(".bar-label")
-    .data(data)
-    .join("text")
-    .attr("class", "axis-label")
-    .attr("x", d => x(d.city) + x.bandwidth() / 2)
-    .attr("y", d => y(d.precip_mm) - 6)
-    .attr("text-anchor", "middle")
-    .text(d => d.precip_mm.toFixed(2));
-
-  g.append("g")
-    .attr("class", "axis")
-    .attr("transform", `translate(0,${h})`)
-    .call(d3.axisBottom(x));
-
-  g.append("g")
-    .attr("class", "axis")
-    .call(d3.axisLeft(y).ticks(6));
-
-  g.append("text")
-    .attr("class", "axis-label")
-    .attr("transform", "rotate(-90)")
-    .attr("x", -h / 2)
-    .attr("y", -46)
-    .attr("text-anchor", "middle")
-    .text("Precipitation (mm/day)");
-
-  g.append("text")
-    .attr("class", "axis-label")
-    .attr("x", 0)
-    .attr("y", -14)
-    .text(`${selectedYear} · ${SSP_LABELS[scenario]} · darker blue = wetter`);
-}
-
-
-// ── VIZ 4 & 5 LISTENERS ─────────────────────────────────────────────────────
-
-["tempHeatScenario", "tempHeatYear"].forEach(id => {
-  d3.select(`#${id}`).on("input change", drawTempHeatmap);
-});
-
-["precipHeatScenario", "precipHeatYear"].forEach(id => {
-  d3.select(`#${id}`).on("input change", drawPrecipBarChart);
-});
-
-// ── RESIZE ───────────────────────────────────────────────────────────────────
-window.addEventListener("resize", () => {
-  if (csvData.length) {
-    drawTemp();
-    drawPrecip();
-    drawTempHeatmap();
-    drawPrecipBarChart();
-  }
-  if (mrsoData) drawCAMap();
-});
+init();

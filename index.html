@@ -1,151 +1,166 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>CMIP6 Climate Futures</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <script src="https://d3js.org/topojson.v3.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rising Seas — Coastal Sea Level Projections 2024–2100</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div class="page-header">
-    <h1>CMIP6 Climate Futures</h1>
-    <p class="subtitle">Projected temperature, precipitation, and soil moisture for US cities and California — GFDL-ESM4 &amp; MPI-ESM1-2-LR models</p>
+<div id="loading"><div class="spin"></div><p>Loading sea level projections...</p></div>
+<div id="tip"></div>
+
+<header>
+  <div style="display:flex;align-items:baseline;">
+    <h1>Rising Seas</h1>
+    <span class="hsub">Coastal Sea Level Projections · 2024–2100 · CMIP6 SSP5-8.5</span>
+  </div>
+  <div class="mpill">CanESM5 zostoga + MPI-ESM1-2-LR zos · SSP5-8.5 · 1995–2014 baseline</div>
+</header>
+
+<div class="ctrl">
+  <div class="cs">
+    <span class="clabel">Basin</span>
+    <button class="bb active" data-basin="All">All</button>
+    <button class="bb" data-basin="Pacific">Pacific</button>
+    <button class="bb" data-basin="Indian">Indian</button>
+    <button class="bb" data-basin="Atlantic">Atlantic</button>
+    <button class="bb" data-basin="Mediterranean">Mediterranean</button>
+    <button class="bb" data-basin="Red Sea">Red Sea</button>
+    <button class="bb" data-basin="Caribbean">Caribbean</button>
+    <button class="bb" data-basin="Baltic">Baltic</button>
+    <button class="bb" data-basin="Arctic">Arctic</button>
+  </div>
+  <div class="cs">
+    <span class="clabel">Color by</span>
+    <select class="msel" id="metric">
+      <option value="slr2100">SLR by 2100</option>
+      <option value="slr2050">SLR by 2050</option>
+    </select>
+  </div>
+  <div class="cs">
+    <span class="clabel">Search</span>
+    <input id="search" type="text" placeholder="Country name...">
+  </div>
+  <div class="cs">
+    <div class="zrow">
+      <button class="zb" id="zin">+</button>
+      <button class="zb" id="zout">−</button>
+    </div>
+    <button class="rb" id="zreset">Reset view</button>
+  </div>
+</div>
+
+<div class="main">
+  <div id="mwrap">
+    <svg id="map"></svg>
+    <div class="leg">
+      <div class="ltitle" id="ltitle">SLR by 2100 (cm above 1995–2014)</div>
+      <div class="lbins" id="lbins"></div>
+      <div class="llabels"><span id="lmin"></span><span id="lmax"></span></div>
+      <div class="lnod"><div class="lnodsw"></div>No projection data</div>
+    </div>
   </div>
 
-  <!-- ── VIZ 1: TEMPERATURE ── -->
-  <section class="viz-block">
-    <div class="viz-title-row">
-      <h2>Temperature Projections</h2>
-      <p class="viz-desc">Annual mean near-surface temperature (°F) by city and emissions scenario, 1950–2100.</p>
-    </div>
-
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="tempCity">City</label>
-        <select id="tempCity"></select>
+  <div id="cpanel">
+    <div class="cphead">
+      <div class="cphr">
+        <div class="cpname" id="cpname">—</div>
+        <button class="cpclose" id="cpclose">Back to map</button>
       </div>
-      <div class="ctrl-group">
-        <label for="tempScenario">Scenario</label>
-        <select id="tempScenario"></select>
+      <div class="cpmeta" id="cpmeta"></div>
+    </div>
+    <div class="cpbody">
+      <div class="infogrid">
+        <div class="igcell"><div class="iglabel">Region</div><div class="igval" id="ig-region">—</div></div>
+        <div class="igcell"><div class="iglabel">Ocean basin</div><div class="igval" id="ig-basin">—</div></div>
+        <div class="igcell"><div class="iglabel">Avg coastal elevation</div><div class="igval" id="ig-elev">—</div></div>
+        <div class="igcell"><div class="iglabel">Population (2023)</div><div class="igval" id="ig-pop">—</div></div>
       </div>
-    </div>
-
-    <div class="chart-container">
-      <svg id="tempChart"></svg>
-    </div>
-
-    <div class="scenario-legend" id="tempLegend"></div>
-  </section>
-
-  <!-- ── VIZ 2: PRECIPITATION ── -->
-  <section class="viz-block shaded">
-    <div class="viz-title-row">
-      <h2>Precipitation Projections</h2>
-      <p class="viz-desc">Annual mean precipitation (mm/day) by city and emissions scenario, 1950–2100.</p>
-    </div>
-
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="precipCity">City</label>
-        <select id="precipCity"></select>
+      <div class="stats4">
+        <div class="s4"><div class="s4label">Rise by 2030</div><div class="s4val" id="s-2030">—</div></div>
+        <div class="s4"><div class="s4label">Rise by 2050</div><div class="s4val r" id="s-2050">—</div></div>
+        <div class="s4"><div class="s4label">Rise by 2100</div><div class="s4val r" id="s-2100">—</div></div>
+        <div class="s4"><div class="s4label">vs. Global 2100</div><div class="s4val" id="s-vs">—</div></div>
       </div>
-      <div class="ctrl-group">
-        <label for="precipScenario">Scenario</label>
-        <select id="precipScenario"></select>
+      <div class="chhead">
+        <span class="chtitle">Sea level rise trajectory</span>
+        <span class="chsub">cm above 1995–2014 baseline</span>
       </div>
-    </div>
-
-    <div class="chart-container">
-      <svg id="precipChart"></svg>
-    </div>
-
-    <div class="scenario-legend" id="precipLegend"></div>
-  </section>
-
-  <!-- ── VIZ 3: CALIFORNIA MAP ── -->
-  <section class="viz-block">
-    <div class="viz-title-row">
-      <h2>California Soil Moisture Anomaly</h2>
-      <p class="viz-desc">End-of-century (2071–2100) soil moisture change vs. 1985–2014 baseline. Red = drier, blue = wetter. Model: MPI-ESM1-2-LR.</p>
-    </div>
-
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="mapScenario">Scenario</label>
-        <select id="mapScenario"></select>
+      <div id="tchart"></div>
+      <div class="chleg">
+        <div class="cli"><div class="clline" style="background:var(--blue);"></div><span id="cl-name">Country</span></div>
+        <div class="cli"><div class="cldash"></div>Global mean (CanESM5 zostoga)</div>
+      </div>
+      <div class="cpsec">
+        <div class="cpsectitle">Key context</div>
+        <ul id="cpbullets"></ul>
+      </div>
+      <div class="cpinterp" id="cpinterp">—</div>
+      <div class="cpsrc">
+        Sea level rise: CanESM5 zostoga (global thermosteric trend, SSP5-8.5, r1i1p1f1) +
+        MPI-ESM1-2-LR zos (basin-averaged dynamic deviation, SSP5-8.5).
+        Baseline: 1995–2014 mean. Elevation: GEBCO. Population: UN World Population Prospects 2023.
       </div>
     </div>
+  </div>
+</div>
 
-    <div class="map-container">
-      <svg id="caMap"></svg>
-      <div class="colorbar-row">
-        <span class="cb-label red-text">← Drier</span>
-        <svg id="colorbar" width="240" height="16"></svg>
-        <span class="cb-label blue-text">Wetter →</span>
-      </div>
-    </div>
-  </section>
 
-    <!-- ── VIZ 4: TEMPERATURE HEATMAP ── -->
-  <section class="viz-block shaded">
-    <div class="viz-title-row">
-      <h2>Temperature Heatmap</h2>
-      <p class="viz-desc">Annual mean temperature (°F) across cities and years under a selected emissions scenario.</p>
-    </div>
+<div class="writeup" id="writeup">
+  <div class="wu-col">
+    <div class="wu-tag">Motivation</div>
+    <h3>Why sea level rise?</h3>
+    <p>
+      Our main question is: <strong>How much higher will the ocean sit by 2100, and which coastal regions are projected to experience the largest relative rise?</strong>
+      We focused on sea level rise because it is a long-term climate signal that affects flooding, storm surge, and coastal exposure.
+      Instead of framing the project as “tsunami risk,” the final framing is about the rising baseline that makes coastal hazards more damaging.
+    </p>
+    <p>
+      The map gives a geographic overview, while the side panel and line chart let viewers inspect one country at a time.
+      This combination helps show both spatial variation across ocean basins and temporal change from 2024 to 2100.
+    </p>
+  </div>
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="tempHeatScenario">Scenario</label>
-        <select id="tempHeatScenario"></select>
-      </div>
+  <div class="wu-col">
+    <div class="wu-tag">Design rationale</div>
+    <h3>Encodings and interactions</h3>
+    <p>
+      Countries are colored by projected sea level rise in centimeters above the 1995–2014 baseline.
+      A sequential yellow-to-red color scale was chosen because larger values represent more severe projected rise.
+      Gray indicates countries with no projection data in the processed file, so missing data is not confused with low risk.
+    </p>
+    <p>
+      The main interactions are basin filtering, metric switching, search, hover/click inspection, zooming, and reset view.
+      Clicking or hovering a country updates the side panel with the country’s projected rise, basin, elevation, population context, and a D3 line chart.
+      The line chart compares the selected country trajectory against the global mean, which makes regional deviations easier to see.
+    </p>
+  </div>
 
-      <div class="ctrl-group">
-        <label for="tempHeatYear">Selected Year</label>
-        <input type="range" id="tempHeatYear" min="1950" max="2100" step="1" value="2020">
-        <span id="tempHeatYearLabel">2020</span>
-      </div>
-    </div>
+  <div class="wu-col">
+    <div class="wu-tag">Data &amp; process</div>
+    <h3>What the data represents</h3>
+    <p>
+      The visualization uses a processed JSON file generated from CMIP6 sea-level-rise outputs under SSP5-8.5.
+      Sea level rise values are shown in centimeters relative to the 1995–2014 baseline.
+      The map uses country boundaries only as geometry; the climate values come from the project’s local JSON file.
+    </p>
+    <p>
+      Population and coastal elevation are shown as supporting context rather than as CMIP6 variables.
+      The team should verify those external context sources before the final submission and clearly cite them if they remain in the visualization.
+      Development work was split between the data pipeline, D3 map/interaction code, visual styling, and final write-up.
+    </p>
+  </div>
+</div>
 
-    <div class="chart-container">
-      <svg id="tempHeatmap"></svg>
-    </div>
-  </section>
 
-  <!-- ── VIZ 5: PRECIPITATION HEATMAP ── -->
-  <section class="viz-block">
-    <div class="viz-title-row">
-      <h2>Precipitation by City</h2>
-      <p class="viz-desc">Annual mean precipitation (mm/day) across cities for a selected year and emissions scenario.</p>
-    </div>
 
-    <div class="controls">
-      <div class="ctrl-group">
-        <label for="precipHeatScenario">Scenario</label>
-        <select id="precipHeatScenario"></select>
-      </div>
 
-      <div class="ctrl-group">
-        <label for="precipHeatYear">Selected Year</label>
-        <input type="range" id="precipHeatYear" min="1950" max="2100" step="1" value="2020">
-        <span id="precipHeatYearLabel">2020</span>
-      </div>
-    </div>
 
-    <div class="chart-container">
-      <svg id="precipHeatmap"></svg>
-    </div>
-  </section>
-
-  <footer>
-    <p>Data: CMIP6 via Google Cloud Public Datasets · GFDL-ESM4 (NOAA) · MPI-ESM1-2-LR (Max Planck) · DSC106 UC San Diego</p>
-  </footer>
-
-  <div class="tooltip" id="tooltip"></div>
-
-  <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
