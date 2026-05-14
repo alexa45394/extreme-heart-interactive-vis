@@ -116,13 +116,12 @@
     <div class="wu-tag">Motivation</div>
     <h3>Why sea level rise?</h3>
     <p>
-      Our main question is: <strong>How much higher will the ocean sit by 2100, and which coastal regions are projected to experience the largest relative rise?</strong>
-      We focused on sea level rise because it is a long-term climate signal that affects flooding, storm surge, and coastal exposure.
-      Instead of framing the project as “tsunami risk,” the final framing is about the rising baseline that makes coastal hazards more damaging.
+      Our main question is: <strong>How much higher will sea level rise by 2100, and how does that change across coastal regions?</strong>
+      We originally explored tsunami risk, but we realized that the data we were using was better suited for showing long-term sea level rise.
+      Tsunamis, storm surge, and flooding are still relevant, but sea level rise is the baseline condition that can make those coastal hazards more severe.
     </p>
     <p>
-      The map gives a geographic overview, while the side panel and line chart let viewers inspect one country at a time.
-      This combination helps show both spatial variation across ocean basins and temporal change from 2024 to 2100.
+      We wanted the visualization to show both geography and time. A map helps viewers compare coastal countries and ocean basins, while the side panel and line chart show how one selected country changes from 2024 to 2100.
     </p>
   </div>
 
@@ -131,30 +130,71 @@
     <h3>Encodings and interactions</h3>
     <p>
       Countries are colored by projected sea level rise in centimeters above the 1995–2014 baseline.
-      A sequential yellow-to-red color scale was chosen because larger values represent more severe projected rise.
-      Gray indicates countries with no projection data in the processed file, so missing data is not confused with low risk.
+      We used a yellow-to-red color scale because larger values represent more projected rise, while gray shows countries without projection data in our processed file.
+      This keeps missing data visually separate from low sea level rise.
     </p>
     <p>
       The main interactions are basin filtering, metric switching, search, hover/click inspection, zooming, and reset view.
-      Clicking or hovering a country updates the side panel with the country’s projected rise, basin, elevation, population context, and a D3 line chart.
-      The line chart compares the selected country trajectory against the global mean, which makes regional deviations easier to see.
+      Clicking or hovering a country updates the side panel with the country’s values and a D3 line chart comparing that country’s trajectory to the global mean.
+      These interactions make it easier to explore regional differences instead of reading the map as one static image.
     </p>
   </div>
 
   <div class="wu-col">
-    <div class="wu-tag">Data &amp; process</div>
+    <div class="wu-tag">Design alternatives</div>
+    <h3>What we changed</h3>
+    <p>
+      We went through several possible designs before choosing the final version. A static line chart alone was not enough because it showed the time trend but lost the geographic pattern.
+      A map alone was also not enough because it showed spatial differences but did not clearly show how sea level rise changes over time.
+    </p>
+    <p>
+      We also considered a heatmap with a year slider, but the map plus selected-country line chart felt clearer and more focused for this prototype.
+      Earlier versions used tsunami-risk framing and risk scores, but we moved away from that because the risk calculation and population weighting were not clearly sourced.
+      The final version focuses on sea level rise, with population and elevation treated only as supporting context.
+    </p>
+  </div>
+
+  <div class="wu-col">
+    <div class="wu-tag">Data &amp; transformations</div>
     <h3>What the data represents</h3>
     <p>
       The visualization uses a processed JSON file generated from CMIP6 sea-level-rise outputs under SSP5-8.5.
-      Sea level rise values are shown in centimeters relative to the 1995–2014 baseline.
-      The map uses country boundaries only as geometry; the climate values come from the project’s local JSON file.
+      Sea level rise values are shown in centimeters relative to a 1995–2014 baseline.
+      The country map provides geographic geometry, while the climate values are loaded from the local JSON file.
     </p>
     <p>
-      Population and coastal elevation are shown as supporting context rather than as CMIP6 variables.
-      The team should verify those external context sources before the final submission and clearly cite them if they remain in the visualization.
-      Development work was split between the data pipeline, D3 map/interaction code, visual styling, and final write-up.
+      We transformed the climate data into a smaller country-level format so it could be loaded by a static D3 webpage.
+      Countries were also grouped by ocean basin so users could filter the map and compare regional patterns.
+      Population and elevation are included as context variables, not CMIP6 variables, so they are separate from the sea level projection data.
     </p>
   </div>
+
+  <div class="wu-col">
+    <div class="wu-tag">Development process</div>
+    <h3>How we built it</h3>
+    <p>
+      Devin worked on the main map, several interactive features, and helped with the data processing.
+      Liv worked on styling, the graph, data checks, and earlier visual iterations.
+      I worked on the write-up, helped with features and parts of the map, and focused on making the final visualization feel cohesive and clearly laid out.
+    </p>
+    <p>
+      In total, we spent about 25 hours on the project. The most time-consuming parts were data processing, dealing with Git conflicts, making the interactive features work correctly, and getting the map, side panel, and graph to update together.
+      A major design change was shifting from tsunami-risk framing to sea-level-rise framing so the visualization more accurately matched the data.
+    </p>
+  </div>
+
+  <div class="wu-col">
+  <div class="wu-tag">INTERPRETATION</div>
+  <h3>What to look for</h3>
+  <p>
+    The most useful comparisons goes beyond which country has the highest number, sepcifically how each country differs from the global mean and from nearby countries in the same ocean basin. Countries in the same basin often move in similar directions, while some places rise faster or slower because regional ocean dynamics add to or reduce the global trend.
+  </p>
+  <p>
+    The line chart helps show whether most of the projected rise happens steadily or accelerates later in the century, which matters because a country with moderate rise by 2050 can still face much larger change by 2100.
+  </p>
+</div>
+</div>
+
 </div>
 
 
